@@ -131,47 +131,52 @@ class Monitor:
                 dyn_id = dyn["dynamic_id"]
                 if idx >= 3: break
                 try:
-                    dyn_page = await self.context.new_page()
-                    await dyn_page.set_viewport_size({"width": 1080, "height": 1920})
-                    await dyn_page.goto(f"https://t.bilibili.com/{dyn_id}", wait_until="domcontentloaded", timeout=15000)
-                    await asyncio.sleep(3)
-                    # 强制滚回顶部，避免B站页面自动滚动导致截图偏移
-                    await dyn_page.evaluate("window.scrollTo(0, 0)")
-                    await asyncio.sleep(0.5)
-                    # 隐藏B站固定导航栏，防止元素截图被遮挡
-                    await dyn_page.evaluate("""
-                        () => {
-                            const selectors = [
-                                '.bili-header', '.bili-header-m', '#biliMainHeader',
-                                '.international-header', '.primary-channel', '.bili-header__bar',
-                                '.bili-header__channel', '.top-header', '.bili-pendant',
-                                '.bili-header__banner', '.bili-header__notice'
-                            ];
-                            selectors.forEach(sel => {
-                                document.querySelectorAll(sel).forEach(el => {
-                                    el.style.display = 'none';
+                    # 高DPI独立context截图，布局不变但分辨率翻倍
+                    shot_ctx = await self.browser.new_context(device_scale_factor=2)
+                    try:
+                        dyn_page = await shot_ctx.new_page()
+                        await dyn_page.set_viewport_size({"width": 1080, "height": 1920})
+                        await dyn_page.goto(f"https://t.bilibili.com/{dyn_id}", wait_until="domcontentloaded", timeout=15000)
+                        await asyncio.sleep(3)
+                        # 强制滚回顶部，避免B站页面自动滚动导致截图偏移
+                        await dyn_page.evaluate("window.scrollTo(0, 0)")
+                        await asyncio.sleep(0.5)
+                        # 隐藏B站固定导航栏，防止元素截图被遮挡
+                        await dyn_page.evaluate("""
+                            () => {
+                                const selectors = [
+                                    '.bili-header', '.bili-header-m', '#biliMainHeader',
+                                    '.international-header', '.primary-channel', '.bili-header__bar',
+                                    '.bili-header__channel', '.top-header', '.bili-pendant',
+                                    '.bili-header__banner', '.bili-header__notice'
+                                ];
+                                selectors.forEach(sel => {
+                                    document.querySelectorAll(sel).forEach(el => {
+                                        el.style.display = 'none';
+                                    });
                                 });
-                            });
-                            // 隐藏所有 position:fixed 且 z-index>100 的顶层元素（通常为导航/浮层）
-                            document.querySelectorAll('*').forEach(el => {
-                                const style = window.getComputedStyle(el);
-                                if (style.position === 'fixed' && parseInt(style.zIndex) > 100) {
-                                    el.style.display = 'none';
-                                }
-                            });
-                        }
-                    """)
-                    await asyncio.sleep(0.3)
-                    card = dyn_page.locator('.bili-dyn-item, [class*="dyn-card"]').first
-                    if await card.count() > 0:
-                        await card.scroll_into_view_if_needed()
+                                // 隐藏所有 position:fixed 且 z-index>100 的顶层元素（通常为导航/浮层）
+                                document.querySelectorAll('*').forEach(el => {
+                                    const style = window.getComputedStyle(el);
+                                    if (style.position === 'fixed' && parseInt(style.zIndex) > 100) {
+                                        el.style.display = 'none';
+                                    }
+                                });
+                            }
+                        """)
                         await asyncio.sleep(0.3)
-                        ts = time.strftime("%Y%m%d%H%M%S")
-                        path = str(Path(self.mail_save_dir) / f"new_{dyn_id}_{ts}.png")
-                        await card.screenshot(path=path)
-                        dyn["screenshot_path"] = path
-                        logger.info(f"📸 截图: {path}")
-                    await dyn_page.close()
+                        card = dyn_page.locator('.bili-dyn-item, [class*="dyn-card"]').first
+                        if await card.count() > 0:
+                            await card.scroll_into_view_if_needed()
+                            await asyncio.sleep(0.3)
+                            ts = time.strftime("%Y%m%d%H%M%S")
+                            path = str(Path(self.mail_save_dir) / f"new_{dyn_id}_{ts}.png")
+                            await card.screenshot(path=path)
+                            dyn["screenshot_path"] = path
+                            logger.info(f"📸 截图: {path}")
+                        await dyn_page.close()
+                    finally:
+                        await shot_ctx.close()
                 except Exception as e:
                     logger.warning(f"⚠️ 截图失败: {e}")
 
