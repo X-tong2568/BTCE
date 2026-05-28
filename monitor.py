@@ -120,6 +120,22 @@ class Monitor:
     # ------------------------------------------------------------------
     # 新动态批量通知
     # ------------------------------------------------------------------
+    async def _safe_evaluate(self, page, js, retries=3):
+        """安全执行page.evaluate，自动重试页面跳转导致的执行上下文销毁"""
+        for attempt in range(retries):
+            try:
+                return await page.evaluate(js)
+            except Exception as e:
+                if "Execution context" in str(e) and attempt < retries - 1:
+                    logger.warning(f"⚠️ 页面跳转中，等待稳定后重试 ({attempt+1}/{retries})")
+                    await asyncio.sleep(1.5)
+                    try:
+                        await page.wait_for_load_state("load", timeout=5000)
+                    except Exception:
+                        pass
+                else:
+                    raise
+
     async def _handle_new_dynamics_batch(self, new_dynamics, up_name):
         if not new_dynamics: return
         try:
@@ -133,16 +149,23 @@ class Monitor:
                 try:
                     # 高DPI独立context截图，布局不变但分辨率翻倍
                     shot_ctx = await self.browser.new_context(device_scale_factor=2)
+                    # 复制主context的cookies，避免B站因未登录跳转导致页面导航
+                    main_cookies = await self.context.cookies()
+                    if main_cookies:
+                        await shot_ctx.add_cookies(main_cookies)
                     try:
                         dyn_page = await shot_ctx.new_page()
                         await dyn_page.set_viewport_size({"width": 1080, "height": 1920})
-                        await dyn_page.goto(f"https://t.bilibili.com/{dyn_id}", wait_until="domcontentloaded", timeout=15000)
-                        await asyncio.sleep(3)
-                        # 强制滚回顶部，避免B站页面自动滚动导致截图偏移
-                        await dyn_page.evaluate("window.scrollTo(0, 0)")
-                        await asyncio.sleep(0.5)
-                        # 隐藏B站固定导航栏，防止元素截图被遮挡
-                        await dyn_page.evaluate("""
+                        # 用load+networkidle等页面彻底稳定，避免B站二次跳转导致evaluate上下文销毁
+                        await dyn_page.goto(f"https://t.bilibili.com/{dyn_id}", wait_until="load", timeout=20000)
+                        try:
+                            await dyn_page.wait_for_load_state("networkidle", timeout=8000)
+                        except Exception:
+                            pass  # networkidle超时不阻塞，可能B站长轮询导致
+                        await asyncio.sleep(1)
+                        # 强制滚回顶部+隐藏B站固定导航栏（包装为安全evaluate，处理残余跳转）
+                        await self._safe_evaluate(dyn_page, "window.scrollTo(0, 0)")
+                        await self._safe_evaluate(dyn_page, """
                             () => {
                                 const selectors = [
                                     '.bili-header', '.bili-header-m', '#biliMainHeader',
@@ -155,7 +178,6 @@ class Monitor:
                                         el.style.display = 'none';
                                     });
                                 });
-                                // 隐藏所有 position:fixed 且 z-index>100 的顶层元素（通常为导航/浮层）
                                 document.querySelectorAll('*').forEach(el => {
                                     const style = window.getComputedStyle(el);
                                     if (style.position === 'fixed' && parseInt(style.zIndex) > 100) {
