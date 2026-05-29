@@ -17,3 +17,5 @@ test_space.py
 tmp_*.json
 tmp_*.txt
 .claude/
+test_publish.py
+*.png
