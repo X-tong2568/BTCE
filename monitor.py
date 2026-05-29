@@ -10,7 +10,8 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 from config import (
     CHECK_INTERVAL, COOKIE_FILE, HISTORY_FILE,
     MAIL_SAVE_DIR, UP_NAME, PINNED_DYNAMIC_ID, BROWSER_CONFIG, BROWSER_RESTART_INTERVAL,
-    P1_TOTAL_FAILURE_THRESHOLD, P2_SUCCESS_RATE_THRESHOLD
+    P1_TOTAL_FAILURE_THRESHOLD, P2_SUCCESS_RATE_THRESHOLD,
+    AUTO_PUBLISH_ENABLED, AUTO_PUBLISH_TOPIC_ID, AUTO_PUBLISH_TOPIC_NAME
 )
 from render_comment import CommentRenderer
 from email_utils import send_email
@@ -23,6 +24,7 @@ from qq_utils import send_qq_message
 from config_qq import QQ_GROUP_IDS
 from dynamic import MONITOR_LIST
 from bili_api import BiliAPI
+import auto_publish
 
 
 class Monitor:
@@ -347,6 +349,14 @@ class Monitor:
             logger.info("📧 置顶评论邮件已提交")
             qq = self.comment_renderer.generate_qq_message(UP_NAME, dynamic_id, cur_html, ct, cur_img, screenshot_path)
             await send_qq_message(qq, {"up_name": UP_NAME, "dynamic_id": dynamic_id, "current_html": cur_html, "current_time": ct, "current_images": cur_img})
+
+            if AUTO_PUBLISH_ENABLED and screenshot_path:
+                asyncio.create_task(
+                    auto_publish.publish_dynamic(dynamic_id, screenshot_path,
+                                                 await self.context.cookies(),
+                                                 UP_NAME, AUTO_PUBLISH_TOPIC_ID, AUTO_PUBLISH_TOPIC_NAME)
+                )
+                logger.info("📤 自动发布动态已提交")
         except Exception as e:
             logger.error(f"❌ 通知失败: {e}")
 

@@ -75,6 +75,11 @@ P2_SUCCESS_RATE_THRESHOLD = 0.8  # 成功率阈值（80%）
 # ===== 系统状态检查间隔 =====
 SYSTEM_STATUS_CHECK_INTERVAL = 3600  # 系统状态检查间隔（秒）
 
+# ===== 动态自动发布配置 =====
+AUTO_PUBLISH_ENABLED = True  # 置顶评论变更时自动发布B站动态（含截图+话题+链接）
+AUTO_PUBLISH_TOPIC_ID = 66066  # 话题ID（小星星的家）
+AUTO_PUBLISH_TOPIC_NAME = "小星星的家"  # 话题名称
+
 # ===== 动态链接配置 =====
 try:
     from dynamic import DYNAMIC_URLS
