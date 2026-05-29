@@ -1,6 +1,6 @@
-# BTCE 4.1 — B站动态/直播监控系统
+# BTCE 4.2 — B站动态/直播监控系统
 
-基于 Python + Playwright 的 Bilibili UP 主动态和直播自动化监控系统，支持多通道实时通知。
+基于 Python + Playwright 的 Bilibili UP 主动态和直播自动化监控系统，支持多通道实时通知及自动发布动态。
 
 ## 版本演进
 
@@ -10,7 +10,22 @@
 | v2.0 | 云端部署版（BTCE2.0） |
 | v3.0 | 本地重构版 |
 | v4.0 | 架构升级：API 动态列表 + 手动配置置顶 ID + 新动态卡片截图 + 双通道推送 |
-| **v4.1** | 置顶评论截图推送：高DPI `#comment` 元素截图，替换文字+表情+图片，失败兜底旧格式 |
+| v4.1 | 置顶评论截图推送：高DPI `#comment` 元素截图，替换文字+表情+图片，失败兜底旧格式 |
+| **v4.2** | 自动发布B站动态：置顶评论变更时自动发图文动态（话题+截图+跳转链接），config开关控制 |
+
+## v4.2 更新
+
+- **自动发布B站动态**：置顶评论变更时上传截图+发布带 `#小星星的家` 话题的图文动态，附跳转链接
+- **auto_publish.py**：独立模块，B站图床上传 + 动态发布 API，异步调用不阻塞通知
+- **config 开关**：`AUTO_PUBLISH_ENABLED` 控制功能启用/关闭，话题 ID 和名称可配
+
+### XTong 的贡献
+- **需求与测试**：自动发布功能设计、话题 ID 定位、大号实名验证、发布效果验证
+
+### Claude (AI Assistant) 的贡献
+- **auto_publish.py**：B站图片上传 API + 动态发布 API 实现（multipart 上传 + JSON 组装 + CSRF 鉴权）
+- **monitor.py**：`asyncio.create_task` 异步触发自动发布，不阻塞邮件/QQ 通知
+- **config.py**：`AUTO_PUBLISH_ENABLED` / `AUTO_PUBLISH_TOPIC_ID` / `AUTO_PUBLISH_TOPIC_NAME` 配置项
 
 ## v4.1 更新
 
@@ -48,7 +63,7 @@
 
 ## 核心功能
 
-1. **置顶评论监控** — Playwright 打开手动配置的置顶动态，抓取置顶评论文字+图片，变化时截图推送邮件/QQ，截图失败兜底文字格式
+1. **置顶评论监控** — Playwright 打开手动配置的置顶动态，抓取置顶评论文字+图片，变化时截图推送邮件/QQ，截图失败兜底文字格式；可自动发布B站动态
 2. **新动态检测** — API 定时获取动态列表，差集比对发现新动态，卡片截图 QQ 推送
 3. **直播监控** — 轮询 B站直播 API，开播/下播/标题变化即时通知
 4. **多通道通知** — 邮件（HTML 格式）+ QQ 群（文字/CQ码图片/卡片截图）
@@ -60,6 +75,7 @@
 BTCE3.0/
 ├── main.py                    # 程序入口
 ├── monitor.py                 # 核心监控逻辑
+├── auto_publish.py            # B站动态自动发布模块（v4.2）
 ├── bili_api.py                # B站动态列表 API 客户端
 ├── live_monitor.py            # 直播状态监控
 ├── monitor_scheduler.py       # 直播监控调度器
