@@ -26,7 +26,7 @@ class EmailRenderer:
         self.color_config = color_config
 
     def render_email_content(self, dynamic_id, current_html, current_images,
-                             last_html, last_images, current_time=None):
+                             last_html, last_images, current_time=None, screenshot_path=None):
         """
         生成邮件完整 HTML。
 
@@ -389,22 +389,38 @@ class EmailRenderer:
                             <div class="centered-block">
                                 <span class="key-badge">✨ 新置顶评论： ✨</span>
                             </div>
+            """
 
+            # 新置顶评论内容：优先用截图，失败兜底文字+图片
+            screenshot_ok = False
+            if screenshot_path:
+                try:
+                    import base64
+                    with open(screenshot_path, 'rb') as f:
+                        b64 = base64.b64encode(f.read()).decode('utf-8')
+                    email_body += '<div class="comment-content current-comment" style="text-align:center;padding:10px;">'
+                    email_body += f'<img src="data:image/png;base64,{b64}" style="max-width:100%;border-radius:8px;" alt="置顶评论截图">'
+                    email_body += '</div>'
+                    screenshot_ok = True
+                except Exception as e:
+                    logger.warning(f"⚠️ 嵌入置顶评论截图失败: {e}")
+
+            if not screenshot_ok:
+                # 兜底：旧版文字+评论区图片
+                email_body += f'''
                             <div class="comment-content current-comment">
                                 {current_html if current_html else "无置顶评论"}
                             </div>
-            """
-
-            # 添加新置顶评论图片
-            if current_images:
-                email_body += '<div class="images-container">'
-                for img_url in current_images:
-                    if img_url.startswith('//'):
-                        img_url = 'https:' + img_url
-                    elif not img_url.startswith(('http://', 'https://')):
-                        img_url = 'https:' + img_url
-                    email_body += f'<img class="image-item" src="{img_url}" alt="评论图片">'
-                email_body += '</div>'
+                '''
+                if current_images:
+                    email_body += '<div class="images-container">'
+                    for img_url in current_images:
+                        if img_url.startswith('//'):
+                            img_url = 'https:' + img_url
+                        elif not img_url.startswith(('http://', 'https://')):
+                            img_url = 'https:' + img_url
+                        email_body += f'<img class="image-item" src="{img_url}" alt="评论图片">'
+                    email_body += '</div>'
 
             # 继续拼接旧置顶评论区域
             email_body += f"""

@@ -261,10 +261,66 @@ class Monitor:
             last_text = self.comment_renderer.extract_text_from_html(self._clean_html_emojis(last_html))
             logger.info(f"📝 当前: {cur_text} | 上次: {last_text or '无'}")
             should = (is_new_pinned and self.history_data.get("last_pinned_dynamic_id")) or (not last_text or cur_text != last_text)
+
             await page.close()
 
+            screenshot_path = None
             if should:
-                await self._send_notification(dynamic_id, current_html, current_images, last_html, last_images)
+                try:
+                    # 高DPI独立context截图，分辨率翻倍
+                    shot_ctx = await self.browser.new_context(device_scale_factor=2)
+                    main_cookies = await self.context.cookies()
+                    if main_cookies:
+                        await shot_ctx.add_cookies(main_cookies)
+                    try:
+                        shot_page = await shot_ctx.new_page()
+                        await shot_page.set_viewport_size({"width": 1080, "height": 1920})
+                        await shot_page.goto(f"https://t.bilibili.com/{dynamic_id}", wait_until="load", timeout=20000)
+                        try:
+                            await shot_page.wait_for_load_state("networkidle", timeout=8000)
+                        except Exception:
+                            pass
+                        await asyncio.sleep(1)
+                        await self._safe_evaluate(shot_page, "window.scrollTo(0, 0)")
+                        await self._safe_evaluate(shot_page, """
+                            () => {
+                                const selectors = [
+                                    '.bili-header', '.bili-header-m', '#biliMainHeader',
+                                    '.international-header', '.primary-channel', '.bili-header__bar',
+                                    '.bili-header__channel', '.top-header', '.bili-pendant',
+                                    '.bili-header__banner', '.bili-header__notice'
+                                ];
+                                selectors.forEach(sel => {
+                                    document.querySelectorAll(sel).forEach(el => {
+                                        el.style.display = 'none';
+                                    });
+                                });
+                                document.querySelectorAll('*').forEach(el => {
+                                    const style = window.getComputedStyle(el);
+                                    if (style.position === 'fixed' && parseInt(style.zIndex) > 100) {
+                                        el.style.display = 'none';
+                                    }
+                                });
+                            }
+                        """)
+                        await asyncio.sleep(0.3)
+                        # 直接截图 bili-comment-renderer#comment，它天然只包含置顶评论卡片
+                        comment_el = shot_page.locator('#comment').first
+                        if await comment_el.count() > 0:
+                            await comment_el.scroll_into_view_if_needed()
+                            await asyncio.sleep(0.3)
+                            ts = time.strftime("%Y%m%d%H%M%S")
+                            screenshot_path = str(Path(self.mail_save_dir) / f"pinned_{dynamic_id}_{ts}.png")
+                            await comment_el.screenshot(path=screenshot_path)
+                            logger.info(f"📸 置顶评论截图: {screenshot_path}")
+                        await shot_page.close()
+                    finally:
+                        await shot_ctx.close()
+                except Exception as e:
+                    logger.warning(f"⚠️ 置顶评论截图失败: {e}")
+
+            if should:
+                await self._send_notification(dynamic_id, current_html, current_images, last_html, last_images, screenshot_path)
                 if self.status_monitor: self.status_monitor.record_change()
 
             pc[dynamic_id] = {"html": current_html, "images": current_images, "last_updated": time.strftime("%Y-%m-%d %H:%M:%S")}
@@ -279,17 +335,17 @@ class Monitor:
             self.health_checker.increment_failure()
             return False
 
-    async def _send_notification(self, dynamic_id, cur_html, cur_img, last_html, last_img):
+    async def _send_notification(self, dynamic_id, cur_html, cur_img, last_html, last_img, screenshot_path=None):
         try:
             ct = time.strftime("%Y-%m-%d %H:%M:%S")
-            body = self.comment_renderer.render_email_content(dynamic_id, cur_html, cur_img, last_html, last_img, ct)
+            body = self.comment_renderer.render_email_content(dynamic_id, cur_html, cur_img, last_html, last_img, ct, screenshot_path)
             ts = time.strftime("%Y%m%d%H%M%S")
             fp = os.path.join(self.mail_save_dir, f"{UP_NAME}-{ts}.html")
             Path(self.mail_save_dir).mkdir(parents=True, exist_ok=True)
             with open(fp, "w", encoding="utf-8") as f: f.write(body)
             asyncio.create_task(asyncio.to_thread(send_email, subject=f"【{UP_NAME}】瞳瞳空间更新啦", content=body))
             logger.info("📧 置顶评论邮件已提交")
-            qq = self.comment_renderer.generate_qq_message(UP_NAME, dynamic_id, cur_html, ct, cur_img)
+            qq = self.comment_renderer.generate_qq_message(UP_NAME, dynamic_id, cur_html, ct, cur_img, screenshot_path)
             await send_qq_message(qq, {"up_name": UP_NAME, "dynamic_id": dynamic_id, "current_html": cur_html, "current_time": ct, "current_images": cur_img})
         except Exception as e:
             logger.error(f"❌ 通知失败: {e}")

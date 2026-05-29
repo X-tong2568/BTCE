@@ -137,17 +137,17 @@ class CommentRenderer:
             logger.error(f"❌ 检测评论变化失败: {e}")
             return False
 
-    def render_email_content(self, dynamic_id, current_html, current_images, last_html, last_images, current_time=None):
+    def render_email_content(self, dynamic_id, current_html, current_images, last_html, last_images, current_time=None, screenshot_path=None):
         """渲染邮件内容 - 调用EmailRenderer"""
         return self.email_renderer.render_email_content(
-            dynamic_id, current_html, current_images, last_html, last_images, current_time
+            dynamic_id, current_html, current_images, last_html, last_images, current_time, screenshot_path
         )
 
     def generate_qq_message(self, up_name: str, dynamic_id: str, current_html: str, current_time: str,
-                            current_images: list) -> str:
+                            current_images: list, screenshot_path: str = None) -> str:
         """生成QQ群推送消息 - 调用QQMessageGenerator"""
         return self.qq_generator.generate_qq_message(
-            up_name, dynamic_id, current_html, current_time, current_images
+            up_name, dynamic_id, current_html, current_time, current_images, screenshot_path
         )
 
     # ------------------------------------------------------------------
