@@ -20,7 +20,7 @@ MAX_LOG_SIZE_MB = 5
 LOG_BACKUP_COUNT = 1
 
 # ===== 直播监控配置 =====
-LIVE_ROOM_ID = 82568  # 星瞳直播间房间号
+LIVE_ROOM_ID = 82568  # 直播间房间号
 LIVE_CHECK_INTERVAL = 15  # 直播检查间隔（秒）
 LIVE_API_TIMEOUT = 10  # API请求超时时间（秒）
 LIVE_MAX_RETRIES = 3  # 最大重试次数
@@ -32,7 +32,7 @@ LIVE_SUCCESS_RATE_THRESHOLD = 0.9  # 成功率阈值（P2告警）
 
 # ===== 动态监控配置 =====
 UP_NAME = "星瞳_Official"
-UP_UID = "401315430"  # 星瞳B站UID
+UP_UID = "401315430"  # 监控目标B站UID
 PINNED_DYNAMIC_ID = "1199636880383016962"  # 置顶动态ID（手动配置）
 CHECK_INTERVAL = 8  # 秒
 MAX_RETRY_ATTEMPTS = 3

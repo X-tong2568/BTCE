@@ -92,8 +92,7 @@ async def upload_image(file_path: str, cookies: list) -> Optional[dict]:
 
 
 async def publish_dynamic(dynamic_id: str, screenshot_path: str, cookies: list,
-                          up_name: str = "星瞳_Official",
-                          topic_id: int = 66066, topic_name: str = "小星星的家") -> bool:
+                          up_name: str, topic_id: int, topic_name: str) -> bool:
     """
     发布B站动态（图文+话题+超链接）。
     返回True表示发布成功，False表示失败。
