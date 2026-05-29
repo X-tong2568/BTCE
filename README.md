@@ -17,6 +17,17 @@
 - **置顶评论截图推送**：检测到置顶评论变更时，独立高DPI context（`device_scale_factor=2`）截图 `<bili-comment-renderer id="comment">` 元素
 - **截图替换旧格式**：QQ/邮件通知中用截图替换文字+表情alt+评论区图片，截图失败自动兜底旧文字格式
 
+### XTong 的贡献
+- **截图目标定位**：在浏览器 DevTools 中发现 `#comment` 元素天然隔离置顶评论卡片，无需 DOM 裁剪
+- **截图范围验证**：确认子评论与置顶评论的 DOM 边界，简化截图方案
+- **需求明确**：截图替代文字图片、失败兜底旧格式、高DPI 截图
+
+### Claude (AI Assistant) 的贡献
+- **monitor.py**：置顶评论高DPI截图（`device_scale_factor=2` + 独立context + cookies复制），截图失败不阻塞通知
+- **email_renderer.py**：截图 base64 内嵌替换文字+图片区，失败兜底旧文字格式
+- **qq_message_generator.py**：截图 CQ:image 替换文字+评论图片，失败兜底旧文字格式
+- **render_comment.py**：`screenshot_path` 参数全链路透传（monitor → render → email/QQ）
+
 ## v4.0 新功能
 
 ### XTong 的贡献
