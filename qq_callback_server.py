@@ -98,7 +98,7 @@ async def handle_callback(request: web.Request) -> web.Response:
 
     # 只处理群消息事件
     if data.get("post_type") != "message" or data.get("message_type") != "group":
-        return web.Response(text="ok")
+        return web.json_response({"status": "ok"})
 
     group_id = str(data.get("group_id", ""))
     user_id = str(data.get("user_id", ""))
@@ -107,7 +107,7 @@ async def handle_callback(request: web.Request) -> web.Response:
 
     # 只处理配置的群
     if group_id not in QQ_GROUP_IDS:
-        return web.Response(text="ok")
+        return web.json_response({"status": "ok"})
 
     logger.info(f"📩 收到群消息: 群={group_id} 用户={user_id}({sender_nick}) 内容={message[:100]}")
 
@@ -117,7 +117,7 @@ async def handle_callback(request: web.Request) -> web.Response:
         # 权限检查
         if user_id not in QQ_ADMIN_USERS:
             await _reply_to_group(group_id, "❌ 你没有权限执行此操作")
-            return web.Response(text="ok")
+            return web.json_response({"status": "ok"})
 
         # 更新 config.py 文件
         file_ok = _update_config_file(new_id)
@@ -139,7 +139,7 @@ async def handle_callback(request: web.Request) -> web.Response:
     # 可以在此扩展更多指令
     # elif "查看置顶" in message: ...
 
-    return web.Response(text="ok")
+    return web.json_response({"status": "ok"})
 
 
 async def start_callback_server():
