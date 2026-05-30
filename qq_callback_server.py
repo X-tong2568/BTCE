@@ -8,6 +8,7 @@ import re
 import json
 import asyncio
 from pathlib import Path
+from typing import Optional
 import aiohttp
 from aiohttp import web
 from logger_config import logger
@@ -72,7 +73,7 @@ async def _reply_to_group(group_id: str, message: str):
         logger.error(f"❌ 回调回复异常: {e}")
 
 
-def _parse_command(message: str) -> str | None:
+def _parse_command(message: str) -> Optional[str]:
     """
     解析消息中的更换置顶指令。
     格式: [CQ:at,qq=<bot_qq>] 更换置顶 <dynamic_id>
