@@ -14,7 +14,7 @@ QQ群推送配置模块 (config_qq.py)
 QQ_BOT_API_URL = "http://127.0.0.1:8080"
 
 # API访问令牌（如果您的机器人需要认证）
-QQ_BOT_ACCESS_TOKEN = "ttkj"
+QQ_BOT_ACCESS_TOKEN = ""  # 需自行配置
 
 # ===== 推送配置 =====
 # 要推送的QQ群号列表
@@ -31,7 +31,7 @@ QQ_PUSH_ENABLED = True
 
 # ===== 回调服务器配置（v4.4） =====
 # 机器人自身QQ号（识别@提及用，必填）
-QQ_BOT_QQ_ID = ""  # 机器人自身QQ号（识别@提及用，必填）
+QQ_BOT_QQ_ID = "3537947523"
 
 # 是否启用回调服务器（接收NapCat事件）
 QQ_CALLBACK_ENABLED = True
@@ -41,7 +41,7 @@ QQ_CALLBACK_PORT = 15510
 
 # 授权用户QQ号列表（谁可以@机器人执行更换置顶等指令）
 QQ_ADMIN_USERS = [
-    "",  # 例: "123456789"
+    "1694448207",
 ]
 
 """
