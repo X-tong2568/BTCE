@@ -27,6 +27,16 @@ except ImportError as e:
     LIVE_MONITOR_AVAILABLE = False
     logger.warning(f"⚠️ 直播监控模块不可用: {e}")
 
+# 尝试导入QQ回调服务器模块（v4.4）
+try:
+    from qq_callback_server import set_monitor, start_callback_server
+    from config_qq import QQ_CALLBACK_ENABLED
+    QQ_CALLBACK_AVAILABLE = True
+except ImportError as e:
+    QQ_CALLBACK_AVAILABLE = False
+    QQ_CALLBACK_ENABLED = False
+    logger.warning(f"⚠️ QQ回调服务器模块不可用: {e}")
+
 
 class Application:
     """应用程序管理器"""
@@ -35,6 +45,7 @@ class Application:
         self.monitor = None
         self.status_check_task = None
         self.live_monitor_task = None
+        self.callback_runner = None
         self.setup_signal_handlers()
         self.start_time = None
         self.is_running = False
@@ -157,6 +168,11 @@ class Application:
             self.monitor.status_monitor = status_monitor
             logger.info("✅ 动态监控任务已启动")
 
+            # 启动QQ回调服务器（v4.4：接收NapCat事件实现QQ群指令更换置顶）
+            if QQ_CALLBACK_AVAILABLE and QQ_CALLBACK_ENABLED:
+                set_monitor(self.monitor)
+                self.callback_runner = await start_callback_server()
+
             # 运行监控任务
             await self.monitor.run()
 
@@ -184,6 +200,14 @@ class Application:
         if self.live_monitor_task and not self.live_monitor_task.done():
             self.live_monitor_task.cancel()
             tasks.append(self.live_monitor_task)
+
+        # 关闭QQ回调服务器
+        if self.callback_runner:
+            try:
+                await self.callback_runner.cleanup()
+                logger.info("🛑 QQ回调服务器已关闭")
+            except Exception as e:
+                logger.warning(f"⚠️ 关闭QQ回调服务器异常: {e}")
 
         # 等待任务完成
         if tasks:

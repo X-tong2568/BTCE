@@ -53,6 +53,12 @@ class Monitor:
         self.browser = None
         self.context = None
 
+    def update_pinned_dynamic_id(self, new_id: str):
+        """运行时动态更换置顶动态ID（供QQ回调指令调用），重置last_pinned避免误报"""
+        self.pinned_dynamic_id = new_id
+        self.history_data["last_pinned_dynamic_id"] = None
+        logger.info(f"🔄 置顶动态ID已更换为 {new_id}")
+
     def _is_new_format(self, data):
         return "pinned_comments" in data and "seen_dynamics" in data
 

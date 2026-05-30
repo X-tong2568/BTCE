@@ -33,7 +33,7 @@ LIVE_SUCCESS_RATE_THRESHOLD = 0.9  # 成功率阈值（P2告警）
 # ===== 动态监控配置 =====
 UP_NAME = "星瞳_Official"  # 监控目标昵称
 UP_UID = "401315430"  # 监控目标B站UID
-PINNED_DYNAMIC_ID = "1199636880383016962"  # 置顶动态ID（手动配置）
+PINNED_DYNAMIC_ID = ""  # 置顶动态ID（手动配置）
 CHECK_INTERVAL = 8  # 秒
 MAX_RETRY_ATTEMPTS = 3
 RETRY_DELAY = 5  # 秒
@@ -94,8 +94,8 @@ BILI_MODE = "screenshot"
 
 # ===== 动态自动发布配置 =====
 AUTO_PUBLISH_ENABLED = False  # 置顶评论变更时自动发布B站动态（含截图+话题+链接）
-AUTO_PUBLISH_TOPIC_ID = 0  # 话题ID（需自行配置）
-AUTO_PUBLISH_TOPIC_NAME = ""  # 话题名称（需自行配置）
+AUTO_PUBLISH_TOPIC_ID = 66066  # 话题ID（小星星的家）
+AUTO_PUBLISH_TOPIC_NAME = "小星星的家"  # 话题名称
 
 # ===== 动态链接配置 =====
 try:
