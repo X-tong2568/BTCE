@@ -1,4 +1,4 @@
-# BTCE 4.3 — B站动态/直播监控系统
+# BTCE 4.4 — B站动态/直播监控系统
 
 基于 Python + Playwright 的 Bilibili UP 主动态和直播自动化监控系统，支持多通道实时通知及自动发布动态。
 
@@ -12,7 +12,24 @@
 | v4.0 | 架构升级：API 动态列表 + 手动配置置顶 ID + 新动态卡片截图 + 双通道推送 |
 | v4.1 | 置顶评论截图推送：高DPI `#comment` 元素截图，替换文字+表情+图片，失败兜底旧格式 |
 | v4.2 | 自动发布B站动态：置顶评论变更时自动发图文动态（话题+截图+跳转链接），config开关控制 |
-| **v4.3** | 三通道推送模式可配置：QQ/邮件/B站各自可选 text/screenshot 模式，截图延迟到B站发布不阻塞通知 |
+| v4.3 | 三通道推送模式可配置：QQ/邮件/B站各自可选 text/screenshot 模式，截图延迟到B站发布不阻塞通知 |
+| **v4.4** | QQ群 @机器人 指令实时更换置顶动态ID：NapCat HTTP回调 + 权限校验 + 持久化+内存即时生效 |
+
+## v4.4 更新
+
+- **QQ群指令更换置顶**：在群里 `@Bot 更换置顶 <动态ID>` 即可实时更换，无需登录服务器改 config
+- **qq_callback_server.py**：aiohttp HTTP 服务器，接收 NapCat 事件回调，解析指令
+- **权限校验**：`QQ_ADMIN_USERS` 白名单控制，非授权用户指令被静默忽略
+- **双重更新**：写入 config.py 持久化 + 调用 `monitor.update_pinned_dynamic_id()` 内存即时生效
+- **回复精准**：只在指令来源群回复，不广播到其他群
+
+### XTong 的贡献
+- **需求与测试**：QQ群指令交互设计、NapCat HTTP客户端事件上报配置、本地+云端测试验证
+
+### Claude (AI Assistant) 的贡献
+- **qq_callback_server.py**：NapCat 事件解析、正则指令匹配、权限校验、config.py 文件写入
+- **monitor.py**：`update_pinned_dynamic_id()` 运行时动态换ID
+- **main.py**：回调服务器生命周期管理
 
 ## v4.3 更新
 
@@ -81,7 +98,7 @@
 
 ## 核心功能
 
-1. **置顶评论监控** — Playwright 打开手动配置的置顶动态，抓取置顶评论文字+图片，变化时推送邮件/QQ/B站；推送模式三通道可配（text/screenshot）
+1. **置顶评论监控** — Playwright 打开置顶动态，抓取置顶评论文字+图片，变化时推送邮件/QQ/B站；推送模式三通道可配；支持 QQ 群 @机器人 实时更换置顶动态ID
 2. **新动态检测** — API 定时获取动态列表，差集比对发现新动态，卡片截图 QQ 推送
 3. **直播监控** — 轮询 B站直播 API，开播/下播/标题变化即时通知
 4. **多通道通知** — 邮件（HTML 格式）+ QQ 群（文字/CQ码图片/卡片截图）
@@ -102,6 +119,7 @@ BTCE3.0/
 ├── email_utils.py             # SMTP 邮件发送
 ├── qq_message_generator.py    # QQ 消息生成
 ├── qq_utils.py                # QQ 机器人推送
+├── qq_callback_server.py      # QQ回调服务器（v4.4: @机器人指令）
 ├── color_config.py            # 邮件渐变色配置
 ├── config.py                  # 主配置（含 PINNED_DYNAMIC_ID）
 ├── config_email.example.py    # 邮箱配置模板
