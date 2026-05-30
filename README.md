@@ -1,4 +1,4 @@
-# BTCE 4.2 — B站动态/直播监控系统
+# BTCE 4.3 — B站动态/直播监控系统
 
 基于 Python + Playwright 的 Bilibili UP 主动态和直播自动化监控系统，支持多通道实时通知及自动发布动态。
 
@@ -11,7 +11,25 @@
 | v3.0 | 本地重构版 |
 | v4.0 | 架构升级：API 动态列表 + 手动配置置顶 ID + 新动态卡片截图 + 双通道推送 |
 | v4.1 | 置顶评论截图推送：高DPI `#comment` 元素截图，替换文字+表情+图片，失败兜底旧格式 |
-| **v4.2** | 自动发布B站动态：置顶评论变更时自动发图文动态（话题+截图+跳转链接），config开关控制 |
+| v4.2 | 自动发布B站动态：置顶评论变更时自动发图文动态（话题+截图+跳转链接），config开关控制 |
+| **v4.3** | 三通道推送模式可配置：QQ/邮件/B站各自可选 text/screenshot 模式，截图延迟到B站发布不阻塞通知 |
+
+## v4.3 更新
+
+- **三通道推送模式可配置**：`QQ_MODE` / `EMAIL_MODE` / `BILI_MODE` 各可选 `"text"` 或 `"screenshot"`
+  - `text`：QQ=纯文本+alt属性+评论区图片，邮件=文字+表情+评论区图片（快速不阻塞）
+  - `screenshot`：截图内嵌（旧版行为，需等待截图）
+  - B站特殊：`screenshot`=截图发布，`text`=跳过不发布
+- **推送顺序优化**：默认 text 模式，QQ+邮件先推不等待截图，截图延迟到 B 站发布
+- **截图逻辑提取**：`_take_pinned_comment_screenshot` 独立方法，按需调用避免重复截图
+- **config 开关**：`QQ_MODE` / `EMAIL_MODE` / `BILI_MODE`，注释含三种切换示例
+
+### XTong 的贡献
+- **需求与测试**：三通道模式差异化需求（QQ纯文本、邮件图文、B站截图），推送顺序优化
+
+### Claude (AI Assistant) 的贡献
+- **monitor.py**：截图提取为独立方法、`_send_notification` 按模式分流、text模式先推不阻塞
+- **config.py**：三通道开关配置 + 切换示例注释
 
 ## v4.2 更新
 
@@ -63,7 +81,7 @@
 
 ## 核心功能
 
-1. **置顶评论监控** — Playwright 打开手动配置的置顶动态，抓取置顶评论文字+图片，变化时截图推送邮件/QQ，截图失败兜底文字格式；可自动发布B站动态
+1. **置顶评论监控** — Playwright 打开手动配置的置顶动态，抓取置顶评论文字+图片，变化时推送邮件/QQ/B站；推送模式三通道可配（text/screenshot）
 2. **新动态检测** — API 定时获取动态列表，差集比对发现新动态，卡片截图 QQ 推送
 3. **直播监控** — 轮询 B站直播 API，开播/下播/标题变化即时通知
 4. **多通道通知** — 邮件（HTML 格式）+ QQ 群（文字/CQ码图片/卡片截图）
@@ -141,6 +159,7 @@ pm2 start main.py --name bili-monitor --interpreter python3
 |--------|------|------|
 | 监控目标 | `dynamic.py` `MONITOR_LIST` | UID + 名称 |
 | 置顶动态 ID | `config.py` `PINNED_DYNAMIC_ID` | 手动配置，换置顶时修改 |
+| 推送模式 | `config.py` `QQ_MODE`/`EMAIL_MODE`/`BILI_MODE` | text=文字+图片, screenshot=截图 |
 | 检查间隔 | `config.py` `CHECK_INTERVAL` | 默认 8 秒 |
 | 邮箱 | `config_email.py` | SMTP + 收发人 |
 | QQ 推送 | `config_qq.py` | 机器人 API + 群号 |
