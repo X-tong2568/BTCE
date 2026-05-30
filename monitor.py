@@ -11,7 +11,8 @@ from config import (
     CHECK_INTERVAL, COOKIE_FILE, HISTORY_FILE,
     MAIL_SAVE_DIR, UP_NAME, PINNED_DYNAMIC_ID, BROWSER_CONFIG, BROWSER_RESTART_INTERVAL,
     P1_TOTAL_FAILURE_THRESHOLD, P2_SUCCESS_RATE_THRESHOLD,
-    AUTO_PUBLISH_ENABLED, AUTO_PUBLISH_TOPIC_ID, AUTO_PUBLISH_TOPIC_NAME
+    AUTO_PUBLISH_ENABLED, AUTO_PUBLISH_TOPIC_ID, AUTO_PUBLISH_TOPIC_NAME,
+    QQ_MODE, EMAIL_MODE, BILI_MODE
 )
 from render_comment import CommentRenderer
 from email_utils import send_email
@@ -266,63 +267,9 @@ class Monitor:
 
             await page.close()
 
-            screenshot_path = None
             if should:
-                try:
-                    # 高DPI独立context截图，分辨率翻倍
-                    shot_ctx = await self.browser.new_context(device_scale_factor=2)
-                    main_cookies = await self.context.cookies()
-                    if main_cookies:
-                        await shot_ctx.add_cookies(main_cookies)
-                    try:
-                        shot_page = await shot_ctx.new_page()
-                        await shot_page.set_viewport_size({"width": 1080, "height": 1920})
-                        await shot_page.goto(f"https://t.bilibili.com/{dynamic_id}", wait_until="load", timeout=20000)
-                        try:
-                            await shot_page.wait_for_load_state("networkidle", timeout=8000)
-                        except Exception:
-                            pass
-                        await asyncio.sleep(1)
-                        await self._safe_evaluate(shot_page, "window.scrollTo(0, 0)")
-                        await self._safe_evaluate(shot_page, """
-                            () => {
-                                const selectors = [
-                                    '.bili-header', '.bili-header-m', '#biliMainHeader',
-                                    '.international-header', '.primary-channel', '.bili-header__bar',
-                                    '.bili-header__channel', '.top-header', '.bili-pendant',
-                                    '.bili-header__banner', '.bili-header__notice'
-                                ];
-                                selectors.forEach(sel => {
-                                    document.querySelectorAll(sel).forEach(el => {
-                                        el.style.display = 'none';
-                                    });
-                                });
-                                document.querySelectorAll('*').forEach(el => {
-                                    const style = window.getComputedStyle(el);
-                                    if (style.position === 'fixed' && parseInt(style.zIndex) > 100) {
-                                        el.style.display = 'none';
-                                    }
-                                });
-                            }
-                        """)
-                        await asyncio.sleep(0.3)
-                        # 直接截图 bili-comment-renderer#comment，它天然只包含置顶评论卡片
-                        comment_el = shot_page.locator('#comment').first
-                        if await comment_el.count() > 0:
-                            await comment_el.scroll_into_view_if_needed()
-                            await asyncio.sleep(0.3)
-                            ts = time.strftime("%Y%m%d%H%M%S")
-                            screenshot_path = str(Path(self.mail_save_dir) / f"pinned_{dynamic_id}_{ts}.png")
-                            await comment_el.screenshot(path=screenshot_path)
-                            logger.info(f"📸 置顶评论截图: {screenshot_path}")
-                        await shot_page.close()
-                    finally:
-                        await shot_ctx.close()
-                except Exception as e:
-                    logger.warning(f"⚠️ 置顶评论截图失败: {e}")
-
-            if should:
-                await self._send_notification(dynamic_id, current_html, current_images, last_html, last_images, screenshot_path)
+                # 通知分流：QQ+邮件默认text模式先推(不阻塞)，再截图推B站
+                await self._send_notification(dynamic_id, current_html, current_images, last_html, last_images)
                 if self.status_monitor: self.status_monitor.record_change()
 
             pc[dynamic_id] = {"html": current_html, "images": current_images, "last_updated": time.strftime("%Y-%m-%d %H:%M:%S")}
@@ -337,26 +284,107 @@ class Monitor:
             self.health_checker.increment_failure()
             return False
 
-    async def _send_notification(self, dynamic_id, cur_html, cur_img, last_html, last_img, screenshot_path=None):
+    async def _take_pinned_comment_screenshot(self, dynamic_id):
+        """截取置顶评论区域截图（高DPI，供screenshot模式通道使用）"""
+        try:
+            shot_ctx = await self.browser.new_context(device_scale_factor=2)
+            main_cookies = await self.context.cookies()
+            if main_cookies:
+                await shot_ctx.add_cookies(main_cookies)
+            try:
+                shot_page = await shot_ctx.new_page()
+                await shot_page.set_viewport_size({"width": 1080, "height": 1920})
+                await shot_page.goto(f"https://t.bilibili.com/{dynamic_id}", wait_until="load", timeout=20000)
+                try:
+                    await shot_page.wait_for_load_state("networkidle", timeout=8000)
+                except Exception:
+                    pass
+                await asyncio.sleep(1)
+                await self._safe_evaluate(shot_page, "window.scrollTo(0, 0)")
+                await self._safe_evaluate(shot_page, """
+                    () => {
+                        const selectors = [
+                            '.bili-header', '.bili-header-m', '#biliMainHeader',
+                            '.international-header', '.primary-channel', '.bili-header__bar',
+                            '.bili-header__channel', '.top-header', '.bili-pendant',
+                            '.bili-header__banner', '.bili-header__notice'
+                        ];
+                        selectors.forEach(sel => {
+                            document.querySelectorAll(sel).forEach(el => {
+                                el.style.display = 'none';
+                            });
+                        });
+                        document.querySelectorAll('*').forEach(el => {
+                            const style = window.getComputedStyle(el);
+                            if (style.position === 'fixed' && parseInt(style.zIndex) > 100) {
+                                el.style.display = 'none';
+                            }
+                        });
+                    }
+                """)
+                await asyncio.sleep(0.3)
+                comment_el = shot_page.locator('#comment').first
+                if await comment_el.count() > 0:
+                    await comment_el.scroll_into_view_if_needed()
+                    await asyncio.sleep(0.3)
+                    ts = time.strftime("%Y%m%d%H%M%S")
+                    path = str(Path(self.mail_save_dir) / f"pinned_{dynamic_id}_{ts}.png")
+                    await comment_el.screenshot(path=path)
+                    logger.info(f"📸 置顶评论截图: {path}")
+                    return path
+                await shot_page.close()
+            finally:
+                await shot_ctx.close()
+        except Exception as e:
+            logger.warning(f"⚠️ 置顶评论截图失败: {e}")
+        return None
+
+    async def _send_notification(self, dynamic_id, cur_html, cur_img, last_html, last_img):
+        """发送通知：按QQ_MODE/EMAIL_MODE/BILI_MODE分流，text模式先推不阻塞截图"""
         try:
             ct = time.strftime("%Y-%m-%d %H:%M:%S")
-            body = self.comment_renderer.render_email_content(dynamic_id, cur_html, cur_img, last_html, last_img, ct, screenshot_path)
+            screenshot_path = None  # 延迟截图，text模式通道不依赖它
+
+            # ── 1) QQ推送 ──
+            if QQ_MODE == "screenshot":
+                # screenshot模式需要先截图
+                if not screenshot_path:
+                    screenshot_path = await self._take_pinned_comment_screenshot(dynamic_id)
+                qq_sp = screenshot_path
+            else:
+                qq_sp = None  # text模式：纯文本+alt属性+评论区图片
+
+            qq = self.comment_renderer.generate_qq_message(UP_NAME, dynamic_id, cur_html, ct, cur_img, qq_sp)
+            await send_qq_message(qq, {"up_name": UP_NAME, "dynamic_id": dynamic_id, "current_html": cur_html, "current_time": ct, "current_images": cur_img})
+            logger.info(f"✅ QQ消息已发送 (模式={QQ_MODE})")
+
+            # ── 2) 邮件推送 ──
+            if EMAIL_MODE == "screenshot":
+                if not screenshot_path:
+                    screenshot_path = await self._take_pinned_comment_screenshot(dynamic_id)
+                email_sp = screenshot_path
+            else:
+                email_sp = None  # text模式：文字+表情+评论区图片
+
+            body = self.comment_renderer.render_email_content(dynamic_id, cur_html, cur_img, last_html, last_img, ct, email_sp)
             ts = time.strftime("%Y%m%d%H%M%S")
             fp = os.path.join(self.mail_save_dir, f"{UP_NAME}-{ts}.html")
             Path(self.mail_save_dir).mkdir(parents=True, exist_ok=True)
             with open(fp, "w", encoding="utf-8") as f: f.write(body)
             asyncio.create_task(asyncio.to_thread(send_email, subject=f"【{UP_NAME}】瞳瞳空间更新啦", content=body))
-            logger.info("📧 置顶评论邮件已提交")
-            qq = self.comment_renderer.generate_qq_message(UP_NAME, dynamic_id, cur_html, ct, cur_img, screenshot_path)
-            await send_qq_message(qq, {"up_name": UP_NAME, "dynamic_id": dynamic_id, "current_html": cur_html, "current_time": ct, "current_images": cur_img})
+            logger.info(f"📧 置顶评论邮件已提交 (模式={EMAIL_MODE})")
 
-            if AUTO_PUBLISH_ENABLED and screenshot_path:
-                asyncio.create_task(
-                    auto_publish.publish_dynamic(dynamic_id, screenshot_path,
-                                                 await self.context.cookies(),
-                                                 UP_NAME, AUTO_PUBLISH_TOPIC_ID, AUTO_PUBLISH_TOPIC_NAME)
-                )
-                logger.info("📤 自动发布动态已提交")
+            # ── 3) B站发布 ──
+            if AUTO_PUBLISH_ENABLED and BILI_MODE == "screenshot":
+                if not screenshot_path:
+                    screenshot_path = await self._take_pinned_comment_screenshot(dynamic_id)
+                if screenshot_path:
+                    asyncio.create_task(
+                        auto_publish.publish_dynamic(dynamic_id, screenshot_path,
+                                                     await self.context.cookies(),
+                                                     UP_NAME, AUTO_PUBLISH_TOPIC_ID, AUTO_PUBLISH_TOPIC_NAME)
+                    )
+                    logger.info("📤 自动发布动态已提交")
         except Exception as e:
             logger.error(f"❌ 通知失败: {e}")
 

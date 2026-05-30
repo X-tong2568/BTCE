@@ -66,7 +66,7 @@ STATUS_MONITOR_INTERVAL = 7200  # 状态检查间隔（秒），2小时
 NO_UPDATE_ALERT_HOURS = 28      # 无更新提醒阈值（小时）
 
 # ===== 性能监控配置 =====
-PERFORMANCE_REPORT_CYCLE_INTERVAL = 80  # 8000轮发送一次报告
+PERFORMANCE_REPORT_CYCLE_INTERVAL = 8000  # 8000轮发送一次报告
 
 # ===== 告警阈值配置 =====
 P1_TOTAL_FAILURE_THRESHOLD = 100  # 失败次数阈值（P1告警）
@@ -74,6 +74,23 @@ P2_SUCCESS_RATE_THRESHOLD = 0.8  # 成功率阈值（80%）
 
 # ===== 系统状态检查间隔 =====
 SYSTEM_STATUS_CHECK_INTERVAL = 3600  # 系统状态检查间隔（秒）
+
+# ===== 三通道推送模式配置 =====
+# 每个通道可选 "text" 或 "screenshot"
+#   text:       QQ=纯文本+alt属性+评论区图片  邮件=文字+表情+评论区图片
+#   screenshot: QQ/邮件=截图内嵌
+# B站特殊：screenshot=截图发布  text=跳过不发布
+#
+# ── 切换示例 ──
+# 推荐（默认）：QQ+邮件秒推不阻塞，B站截图
+#   QQ_MODE = "text"  |  EMAIL_MODE = "text"  |  BILI_MODE = "screenshot"
+# 全部截图（旧版行为，QQ/邮件会等截图）：
+#   QQ_MODE = "screenshot"  |  EMAIL_MODE = "screenshot"  |  BILI_MODE = "screenshot"
+# 只要QQ和B站截图、邮件用文字：
+#   QQ_MODE = "screenshot"  |  EMAIL_MODE = "text"  |  BILI_MODE = "screenshot"
+QQ_MODE = "text"
+EMAIL_MODE = "text"
+BILI_MODE = "screenshot"
 
 # ===== 动态自动发布配置 =====
 AUTO_PUBLISH_ENABLED = True  # 置顶评论变更时自动发布B站动态（含截图+话题+链接）
