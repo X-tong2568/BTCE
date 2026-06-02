@@ -1,4 +1,4 @@
-# BTCE 4.4 — B站动态/直播监控系统
+# BTCE 4.5 — B站动态/直播监控系统
 
 基于 Python + Playwright 的 Bilibili UP 主动态和直播自动化监控系统，支持多通道实时通知及自动发布动态。
 
