@@ -14,6 +14,14 @@
 | v4.2 | 自动发布B站动态：置顶评论变更时自动发图文动态（话题+截图+跳转链接），config开关控制 |
 | v4.3 | 三通道推送模式可配置：QQ/邮件/B站各自可选 text/screenshot 模式，截图延迟到B站发布不阻塞通知 |
 | **v4.4** | QQ群 @机器人 指令实时更换置顶动态ID：NapCat HTTP回调 + 权限校验 + 持久化+内存即时生效 |
+| **v4.5** | 修复 B站旧版 API 下线（404）问题，更换为 polymer web-dynamic 新版接口 |
+
+## v4.5 更新
+
+- **API 接口迁移**：B站旧版 `api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history` 已下线（HTTP 404），更换为 `api.bilibili.com/x/polymer/web-dynamic/v1/feed/space`
+- **仅需 Cookie**：新版 polymer 接口无需 WBI 签名，带 Cookie 即可正常调用
+- **响应结构适配**：新版返回 `items[]` 结构（含 `id_str` / `modules.module_dynamic`），旧版 `cards[]` 解析逻辑完全替换
+- **向后兼容**：返回值的 `dynamic_id` 字段不变，`monitor.py` 调用方无需改动
 
 ## v4.4 更新
 
@@ -88,7 +96,7 @@
 
 ### Claude (AI Assistant) 的贡献
 - **架构重构**：从单一 URL 硬编码升级为 API 动态列表 + 手动置顶 ID 的混合架构
-- **bili_api.py**：B站旧版 API 客户端，带 Cookie 获取动态列表（无需 WBI 签名）
+- **bili_api.py**：B站新版 polymer API 客户端，带 Cookie 获取动态列表（无需 WBI 签名，旧版 api.vc 已下线）
 - **monitor.py 全重写**：分离新动态检测和置顶评论监控两条独立线路
 - **历史记录按 dynamic_id 追踪**：消除置顶动态更换时的误报
 - **卡片截图推送**：Playwright 截取动态卡片 → QQ 群图片推送

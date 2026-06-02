@@ -19,3 +19,4 @@ tmp_*.txt
 .claude/
 test_publish.py
 *.png
+踩坑记录.md
