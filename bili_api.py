@@ -1,5 +1,5 @@
 # bili_api.py
-"""B站 API 轻量客户端——调旧版接口拿动态列表，不需 WBI 签名"""
+"""B站 API 轻量客户端——调用 polymer web-dynamic 新版接口拿动态列表，仅需 Cookie 即可"""
 import json
 import asyncio
 from pathlib import Path
@@ -11,10 +11,10 @@ USER_AGENT = (
     "Chrome/122.0.0.0 Safari/537.36"
 )
 
-# 旧版 API，不需要 WBI 签名，带 Cookie 即可
-SPACE_HISTORY_URL = (
-    "https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history"
-    "?host_uid={uid}&offset_dynamic_id=0&need_top=1&platform=web"
+# 新版 API（2026.06 旧版 api.vc.bilibili.com 已下线，换成 polymer 接口）
+FEED_SPACE_URL = (
+    "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
+    "?host_mid={uid}"
 )
 
 
@@ -41,12 +41,12 @@ class BiliAPI:
     async def get_dynamics(self, uid: str) -> list[dict]:
         """
         获取用户空间动态列表（用 urllib 同步请求，asyncio.to_thread 包装）。
-        返回: [{"dynamic_id": "...", "type": 2, "content": "...", ...}, ...]
+        返回: [{"dynamic_id": "...", "type": "DYNAMIC_TYPE_DRAW", "content": "...", ...}, ...]
         """
         import urllib.request
 
         cookie_str = self._load_cookie_str()
-        url = SPACE_HISTORY_URL.format(uid=uid)
+        url = FEED_SPACE_URL.format(uid=uid)
 
         def _sync_request():
             req = urllib.request.Request(
@@ -71,34 +71,39 @@ class BiliAPI:
             return []
 
         api_data = data.get("data") or {}
-        cards = api_data.get("cards", [])
+        items = api_data.get("items", [])
         result = []
-        for card in cards:
-            desc = card.get("desc", {})
-            card_str = card.get("card", "{}")
-            try:
-                card_data = json.loads(card_str)
-                item = card_data.get("item", {})
-                content = item.get("description") or item.get("content") or ""
-                images = []
-                for pic in (item.get("pictures") or []):
-                    src = pic.get("img_src", "")
-                    if src:
-                        if src.startswith("//"):
-                            src = "https:" + src
-                        elif src.startswith("http://"):
-                            src = src.replace("http://", "https://")
-                        images.append(src)
-            except json.JSONDecodeError:
-                content = ""
-                images = []
+        for item in items:
+            # 新版结构: item.id_str / item.type / item.modules.module_dynamic
+            dyn_id = item.get("id_str", "")
+            dyn_type = item.get("type", "")
+
+            modules = item.get("modules", {})
+            mod_dyn = modules.get("module_dynamic", {})
+
+            # desc 可能为 None（纯图动态）
+            desc = mod_dyn.get("desc")
+            content = (desc.get("text", "") if desc else "")
+
+            # 提取图片列表（漫画/动态图片）
+            major = mod_dyn.get("major") or {}
+            images = []
+            draw_items = (major.get("draw") or {}).get("items", [])
+            for di in draw_items:
+                src = di.get("src", "")
+                if src:
+                    if src.startswith("//"):
+                        src = "https:" + src
+                    elif src.startswith("http://"):
+                        src = src.replace("http://", "https://")
+                    images.append(src)
 
             result.append({
-                "dynamic_id": desc.get("dynamic_id_str") or str(desc.get("dynamic_id", "")),
-                "type": desc.get("type", 0),
+                "dynamic_id": dyn_id,
+                "type": dyn_type,
                 "content": content.strip(),
                 "images": images,
-                "timestamp": desc.get("timestamp", 0),
+                "timestamp": 0,  # 新版接口此层无 timestamp，不影响新动态检测
             })
 
         return result
