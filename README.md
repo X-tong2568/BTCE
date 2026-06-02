@@ -14,14 +14,16 @@
 | v4.2 | 自动发布B站动态：置顶评论变更时自动发图文动态（话题+截图+跳转链接），config开关控制 |
 | v4.3 | 三通道推送模式可配置：QQ/邮件/B站各自可选 text/screenshot 模式，截图延迟到B站发布不阻塞通知 |
 | **v4.4** | QQ群 @机器人 指令实时更换置顶动态ID：NapCat HTTP回调 + 权限校验 + 持久化+内存即时生效 |
-| **v4.5** | 修复 B站旧版 API 下线（404）问题，更换为 polymer web-dynamic 新版接口 |
+| **v4.5** | 修复 B站旧版 API 下线（404），更换 polymer 新版接口；API 独立健康统计+P1/P2告警+日报双通道 |
 
 ## v4.5 更新
 
 - **API 接口迁移**：B站旧版 `api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history` 已下线（HTTP 404），更换为 `api.bilibili.com/x/polymer/web-dynamic/v1/feed/space`
 - **仅需 Cookie**：新版 polymer 接口无需 WBI 签名，带 Cookie 即可正常调用
 - **响应结构适配**：新版返回 `items[]` 结构（含 `id_str` / `modules.module_dynamic`），旧版 `cards[]` 解析逻辑完全替换
-- **向后兼容**：返回值的 `dynamic_id` 字段不变，`monitor.py` 调用方无需改动
+- **API 独立健康统计**：API 动态列表与置顶评论（Playwright）分开计数，各自独立追踪成功/失败/成功率
+- **API 独立 P1/P2 告警**：P1 连续失败 ≥10 次告警（比浏览器 100 次更快响应），P2 成功率 <90% 告警（比浏览器 80% 更严格）
+- **日报双通道**：性能报告邮件分两块展示「置顶评论监控 (Playwright)」和「API 动态列表 (urllib)」，各自含次数/成功率/连续失败/告警状态
 
 ## v4.4 更新
 
