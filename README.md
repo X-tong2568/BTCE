@@ -25,6 +25,18 @@
 - **API 独立 P1/P2 告警**：P1 连续失败 ≥10 次告警（比浏览器 100 次更快响应），P2 成功率 <90% 告警（比浏览器 80% 更严格）
 - **日报双通道**：性能报告邮件分两块展示「置顶评论监控 (Playwright)」和「API 动态列表 (urllib)」，各自含次数/成功率/连续失败/告警状态
 
+### XTong 的贡献
+- **问题发现与定位**：从 pm2 日志发现 API 404 错误，确认旧版接口已下线
+- **需求设计**：API 独立健康统计（不与置顶评论混算）、独立 P1/P2 阈值（API 更快更严）、日报双通道展示
+- **本地+云端测试**：本地模拟 P1/P2 告警触发 + 日报推送验证，云端部署验证
+
+### Claude (AI Assistant) 的贡献
+- **bili_api.py**：旧版 `api.vc.bilibili.com` → 新版 `api.bilibili.com` polymer 接口迁移，响应结构适配，`(list, bool)` 区分成败
+- **health_check.py**：API 独立计数器（`api_success_count`/`api_failure_count`）+ `get_stats()` 双通道输出
+- **performance_monitor.py**：API P1/P2 独立告警逻辑 + 告警邮件 HTML + 日报双通道分区
+- **monitor.py**：API 健康统计接入 `run_monitoring_cycle`
+- **config.py**：`API_P1_FAILURE_THRESHOLD` / `API_P2_SUCCESS_RATE_THRESHOLD` 独立阈值
+
 ## v4.4 更新
 
 - **QQ群指令更换置顶**：在群里 `@Bot 更换置顶 <动态ID>` 即可实时更换，无需登录服务器改 config
