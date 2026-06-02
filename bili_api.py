@@ -41,7 +41,7 @@ class BiliAPI:
     async def get_dynamics(self, uid: str) -> list[dict]:
         """
         获取用户空间动态列表（用 urllib 同步请求，asyncio.to_thread 包装）。
-        返回: [{"dynamic_id": "...", "type": "DYNAMIC_TYPE_DRAW", "content": "...", ...}, ...]
+        返回: (list[dict], bool) — 列表 + 是否成功
         """
         import urllib.request
 
@@ -64,11 +64,11 @@ class BiliAPI:
             data = await asyncio.to_thread(_sync_request)
         except Exception as e:
             logger.error(f"API请求失败: {e}")
-            return []
+            return [], False
 
         if data.get("code") != 0:
             logger.error(f"API返回异常 code={data.get('code')} msg={data.get('message')}")
-            return []
+            return [], False
 
         api_data = data.get("data") or {}
         items = api_data.get("items", [])
@@ -106,4 +106,4 @@ class BiliAPI:
                 "timestamp": 0,  # 新版接口此层无 timestamp，不影响新动态检测
             })
 
-        return result
+        return result, True

@@ -8,6 +8,8 @@ from config_email import STATUS_MONITOR_EMAILS
 from config import (
     P1_TOTAL_FAILURE_THRESHOLD,
     P2_SUCCESS_RATE_THRESHOLD,
+    API_P1_FAILURE_THRESHOLD,
+    API_P2_SUCCESS_RATE_THRESHOLD,
     PERFORMANCE_REPORT_CYCLE_INTERVAL
 )
 
@@ -33,10 +35,18 @@ class PerformanceMonitor:
         self.p2_alert_sent = False
         self.report_sent = False
 
-        logger.info("📊 性能监控器初始化完成（修复P1/P2触发逻辑）")
+        # API 独立统计
+        self.api_total = 0
+        self.api_success = 0
+        self.api_failure = 0
+        self.api_consecutive_failures = 0  # API当前连续失败次数（用于P1）
+        self.api_p1_alert_sent = False
+        self.api_p2_alert_sent = False
+
+        logger.info("📊 性能监控器初始化完成（双通道P1/P2告警）")
         logger.info(f"  - 报告间隔: 每{PERFORMANCE_REPORT_CYCLE_INTERVAL}轮")
-        logger.info(f"  - P1告警: 失败次数 ≥ {P1_TOTAL_FAILURE_THRESHOLD}")
-        logger.info(f"  - P2告警: 成功率 < {P2_SUCCESS_RATE_THRESHOLD * 100:.0f}%")
+        logger.info(f"  - 浏览器 P1: 失败≥{P1_TOTAL_FAILURE_THRESHOLD}  P2: 成功率<{P2_SUCCESS_RATE_THRESHOLD*100:.0f}%")
+        logger.info(f"  - API    P1: 失败≥{API_P1_FAILURE_THRESHOLD}  P2: 成功率<{API_P2_SUCCESS_RATE_THRESHOLD*100:.0f}%")
 
     async def record_memory_usage(self):
         try:
@@ -50,6 +60,7 @@ class PerformanceMonitor:
             return 0
 
     def record_cycle(self, cycle_number, success, duration=None):
+        """记录每轮整体（置顶评论）结果，触发浏览器P1/P2检查"""
         try:
             self.total_cycles = cycle_number
             if success:
@@ -72,6 +83,27 @@ class PerformanceMonitor:
             self._check_conditions(total, success_count, failure_count, success_rate)
         except Exception as e:
             logger.error(f"❌ 记录轮次结果失败: {e}")
+
+    def record_api_result(self, success):
+        """记录API动态列表每次请求结果，触发API独立P1/P2检查"""
+        try:
+            self.api_total += 1
+            if success:
+                self.api_success += 1
+                self.api_consecutive_failures = 0  # 成功后重置连续失败计数
+            else:
+                self.api_failure += 1
+                self.api_consecutive_failures += 1
+
+            api_rate = self.api_success / self.api_total if self.api_total > 0 else 1.0
+            logger.debug(
+                f"📡 API状态: 总{self.api_total}, 成功{self.api_success}, "
+                f"失败{self.api_failure}, 连续失败{self.api_consecutive_failures}, "
+                f"成功率{api_rate:.2%}")
+            self._check_api_conditions(self.api_total, self.api_success,
+                                       self.api_failure, self.api_consecutive_failures, api_rate)
+        except Exception as e:
+            logger.error(f"❌ 记录API结果失败: {e}")
 
     def _check_conditions(self, total, success, failure, success_rate):
         try:
@@ -107,6 +139,30 @@ class PerformanceMonitor:
         except Exception as e:
             logger.error(f"❌ 检查条件失败: {e}")
 
+    def _check_api_conditions(self, total, success, failure, consecutive, success_rate):
+        """检查API独立P1/P2告警条件"""
+        try:
+            if consecutive >= API_P1_FAILURE_THRESHOLD and not self.api_p1_alert_sent:
+                logger.error(f"🚨 API P1告警: 连续失败={consecutive}")
+                asyncio.create_task(self._send_api_p1_alert(total, success, failure, consecutive, success_rate))
+                self.api_p1_alert_sent = True
+                self.last_alert_time = time.time()
+            elif consecutive < API_P1_FAILURE_THRESHOLD and self.api_p1_alert_sent:
+                logger.info(f"🔄 API P1告警重置: 连续失败={consecutive} < 阈值")
+                self.api_p1_alert_sent = False
+
+            if total >= 10 and success_rate < API_P2_SUCCESS_RATE_THRESHOLD and not self.api_p2_alert_sent:
+                logger.error(f"🚨 API P2告警: 成功率={success_rate:.2%}")
+                asyncio.create_task(self._send_api_p2_alert(total, success, failure, success_rate))
+                self.api_p2_alert_sent = True
+                self.last_alert_time = time.time()
+            elif success_rate >= API_P2_SUCCESS_RATE_THRESHOLD and self.api_p2_alert_sent:
+                logger.info(f"🔄 API P2告警重置: 成功率={success_rate:.2%} >= 阈值")
+                self.api_p2_alert_sent = False
+
+        except Exception as e:
+            logger.error(f"❌ 检查API条件失败: {e}")
+
     async def _send_p1_alert(self, total_cycles, failure_count):
         subject = f"🚨 P1告警: 失败次数达 {failure_count} 次 (第{total_cycles}轮)"
         content = self._generate_p1_alert_content(total_cycles, failure_count)
@@ -121,7 +177,101 @@ class PerformanceMonitor:
         success = await asyncio.to_thread(send_email, subject=subject, content=content, to_emails=STATUS_MONITOR_EMAILS)
         logger.info("✅ P2告警邮件发送成功" if success else "❌ P2告警邮件发送失败")
 
+    # ── API 独立告警（P1连续失败 / P2成功率低）──
+
+    async def _send_api_p1_alert(self, total, success, failure, consecutive, success_rate):
+        """发送API P1告警邮件（连续失败）"""
+        subject = f"🚨 API P1告警: 连续失败 {consecutive} 次"
+        content = self._generate_api_p1_alert_content(total, success, failure, consecutive, success_rate)
+        logger.info(f"📤 正在发送API P1告警邮件: {subject}")
+        result = await asyncio.to_thread(send_email, subject=subject, content=content, to_emails=STATUS_MONITOR_EMAILS)
+        logger.info("✅ API P1告警邮件发送成功" if result else "❌ API P1告警邮件发送失败")
+
+    async def _send_api_p2_alert(self, total, success, failure, success_rate):
+        """发送API P2告警邮件（成功率低）"""
+        subject = f"⚠️ API P2告警: 成功率过低 {success_rate:.1%}"
+        content = self._generate_api_p2_alert_content(total, success, failure, success_rate)
+        logger.info(f"📤 正在发送API P2告警邮件: {subject}")
+        result = await asyncio.to_thread(send_email, subject=subject, content=content, to_emails=STATUS_MONITOR_EMAILS)
+        logger.info("✅ API P2告警邮件发送成功" if result else "❌ API P2告警邮件发送失败")
+
+    def _generate_api_p1_alert_content(self, total, success, failure, consecutive, success_rate):
+        """生成API P1告警邮件HTML"""
+        theme = "#E65100"
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="UTF-8">
+        <style>
+        body {{ font-family:'Microsoft YaHei',Arial; background:#f5f5f5; padding:20px; }}
+        .card {{ max-width:650px; margin:auto; background:#fff; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.12); overflow:hidden; }}
+        .header {{ background:linear-gradient(135deg,{theme},#BF360C); color:white; padding:20px; text-align:center; }}
+        .content {{ padding:24px; }}
+        .stat {{ background:#fff3e0; padding:12px; border-radius:6px; margin-bottom:10px; }}
+        table {{ width:100%; border-collapse:collapse; margin-top:15px; }}
+        th,td {{ border:1px solid #ddd; padding:8px; text-align:left; }}
+        th {{ background:#FFE0B2; }}
+        </style></head>
+        <body>
+        <div class="card">
+            <div class="header"><h2>🚨 API 严重告警</h2><p>B站 API 连续调用失败</p></div>
+            <div class="content">
+                <div class="stat"><strong>连续失败次数：</strong>{consecutive}</div>
+                <div class="stat"><strong>总请求次数：</strong>{total}</div>
+                <div class="stat"><strong>成功：</strong>{success} | 失败：{failure}</div>
+                <div class="stat"><strong>成功率：</strong>{success_rate:.2%}</div>
+                <table>
+                    <tr><th>类型</th><th>阈值</th><th>当前</th><th>状态</th></tr>
+                    <tr><td>P1连续失败</td><td>{API_P1_FAILURE_THRESHOLD}</td><td>{consecutive}</td><td>{'🚨 已触发' if self.api_p1_alert_sent else '✅ 正常'}</td></tr>
+                    <tr><td>P2成功率</td><td>{API_P2_SUCCESS_RATE_THRESHOLD:.0%}</td><td>{success_rate:.2%}</td><td>{'⚠️ 已触发' if self.api_p2_alert_sent else '✅ 正常'}</td></tr>
+                </table>
+                <p><strong>⚠️ B站 API 接口可能异常，请检查！</strong></p>
+                <p>不影响置顶评论监控（走Playwright浏览器），但新动态检测将失效。</p>
+            </div>
+        </div>
+        </body></html>"""
+
+    def _generate_api_p2_alert_content(self, total, success, failure, success_rate):
+        """生成API P2告警邮件HTML"""
+        theme = "#F9A825"
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="UTF-8">
+        <style>
+        body {{ font-family:'Microsoft YaHei',Arial; background:#f5f5f5; padding:20px; }}
+        .card {{ max-width:650px; margin:auto; background:#fff; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.1); overflow:hidden; }}
+        .header {{ background:linear-gradient(135deg,{theme},#F57F17); color:white; padding:20px; text-align:center; }}
+        .content {{ padding:24px; }}
+        .stat {{ background:#fffde7; padding:12px; border-radius:6px; margin-bottom:10px; }}
+        table {{ width:100%; border-collapse:collapse; margin-top:15px; }}
+        th,td {{ border:1px solid #ddd; padding:8px; text-align:left; }}
+        th {{ background:#FFF9C4; }}
+        </style></head>
+        <body>
+        <div class="card">
+            <div class="header"><h2>⚠️ API 性能告警</h2><p>B站 API 成功率低于阈值</p></div>
+            <div class="content">
+                <div class="stat"><strong>总请求次数：</strong>{total}</div>
+                <div class="stat"><strong>成功：</strong>{success} | 失败：{failure}</div>
+                <div class="stat"><strong>成功率：</strong>{success_rate:.2%}</div>
+                <table>
+                    <tr><th>类型</th><th>阈值</th><th>当前</th><th>状态</th></tr>
+                    <tr><td>P1连续失败</td><td>{API_P1_FAILURE_THRESHOLD}</td><td>{self.api_consecutive_failures}</td><td>{'🚨 已触发' if self.api_p1_alert_sent else '✅ 正常'}</td></tr>
+                    <tr><td>P2成功率</td><td>{API_P2_SUCCESS_RATE_THRESHOLD:.0%}</td><td>{success_rate:.2%}</td><td>{'⚠️ 已触发' if self.api_p2_alert_sent else '✅ 正常'}</td></tr>
+                </table>
+                <h4>建议排查</h4>
+                <ul>
+                    <li>B站 API 是否限流</li>
+                    <li>Cookie 是否过期</li>
+                    <li>接口域名是否变更</li>
+                </ul>
+            </div>
+        </div>
+        </body></html>"""
+
     async def _send_report(self, total_cycles):
+        """发送综合性能报告（含置顶评论 + API 双通道统计）"""
         subject = f"📊 ttkj-monitor性能报告 - 第{total_cycles}轮"
         content = self._generate_report_content(total_cycles)
         logger.info(f"📤 正在发送性能报告邮件: {subject}")
@@ -258,6 +408,9 @@ class PerformanceMonitor:
         recent_avg = sum(r['duration'] for r in recent) / len(recent) if recent else 0
         theme = "#00796B"
 
+        # API 统计
+        api_success_rate = self.api_success / self.api_total if self.api_total > 0 else 0
+
         return f"""
         <!DOCTYPE html>
         <html>
@@ -267,7 +420,8 @@ class PerformanceMonitor:
         body {{ font-family:'Microsoft YaHei', Arial; background:#f5f5f5; padding:20px; }}
         .card {{ max-width:750px; margin:auto; background:#fff; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.1); overflow:hidden; }}
         .header {{ background:linear-gradient(135deg,{theme},#004D40); color:white; padding:20px; text-align:center; }}
-        table {{ width:100%; border-collapse:collapse; margin-top:20px; }}
+        .section-title {{ background:#E0F2F1; color:#00695C; padding:8px 12px; margin-top:20px; border-radius:4px; font-weight:bold; }}
+        table {{ width:100%; border-collapse:collapse; margin-top:10px; }}
         th, td {{ border:1px solid #ddd; padding:10px; text-align:left; }}
         th {{ background:#B2DFDB; }}
         </style>
@@ -278,7 +432,8 @@ class PerformanceMonitor:
                     <h2>📊 性能运行报告 - 第{total_cycles}轮</h2>
                     <p>系统运行时间: {uptime_hours:.1f} 小时</p>
                 </div>
-                <div class="content">
+                <div class="content" style="padding:24px;">
+                    <div class="section-title">🖥️ 置顶评论监控 (Playwright)</div>
                     <table>
                         <tr><th>指标</th><th>数值</th></tr>
                         <tr><td>总轮次数</td><td>{total_cycles}</td></tr>
@@ -288,9 +443,22 @@ class PerformanceMonitor:
                         <tr><td>平均耗时</td><td>{avg_duration:.1f}s</td></tr>
                         <tr><td>最近10轮平均耗时</td><td>{recent_avg:.1f}s</td></tr>
                         <tr><td>运行频率</td><td>{total_cycles / uptime_hours:.1f} 轮/小时</td></tr>
-                        <tr><td>P1告警状态</td><td colspan="2">{'🚨 已触发' if self.p1_alert_sent else '✅ 正常'}</td></tr>
-                        <tr><td>P2告警状态</td><td colspan="2">{'⚠️ 已触发' if self.p2_alert_sent else '✅ 正常'}</td></tr>
+                        <tr><td>P1告警状态</td><td>{'🚨 已触发' if self.p1_alert_sent else '✅ 正常'}</td></tr>
+                        <tr><td>P2告警状态</td><td>{'⚠️ 已触发' if self.p2_alert_sent else '✅ 正常'}</td></tr>
                     </table>
+
+                    <div class="section-title">📡 API 动态列表 (urllib)</div>
+                    <table>
+                        <tr><th>指标</th><th>数值</th></tr>
+                        <tr><td>API请求次数</td><td>{self.api_total}</td></tr>
+                        <tr><td>API成功次数</td><td>{self.api_success}</td></tr>
+                        <tr><td>API失败次数</td><td>{self.api_failure}</td></tr>
+                        <tr><td>API成功率</td><td>{api_success_rate:.2%}</td></tr>
+                        <tr><td>API连续失败</td><td>{self.api_consecutive_failures}</td></tr>
+                        <tr><td>API P1告警状态</td><td>{'🚨 已触发' if self.api_p1_alert_sent else '✅ 正常'}</td></tr>
+                        <tr><td>API P2告警状态</td><td>{'⚠️ 已触发' if self.api_p2_alert_sent else '✅ 正常'}</td></tr>
+                    </table>
+
                     <p><em>报告间隔: 每 {PERFORMANCE_REPORT_CYCLE_INTERVAL} 轮发送一次</em></p>
                 </div>
             </div>

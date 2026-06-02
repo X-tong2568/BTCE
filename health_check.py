@@ -22,8 +22,10 @@ class HealthChecker:
     def __init__(self):
         self.loop_count = None
         self.start_time = time.time()
-        self.success_count = 0
-        self.failure_count = 0
+        self.success_count = 0      # 置顶评论抓取成功次数
+        self.failure_count = 0      # 置顶评论抓取失败次数
+        self.api_success_count = 0  # API动态列表成功次数
+        self.api_failure_count = 0  # API动态列表失败次数
         self.last_health_check = time.time()  # 初始化时间戳
 
     async def check_memory_usage(self):
@@ -110,17 +112,28 @@ class HealthChecker:
         return f"{hours}h {minutes}m"
 
     def increment_success(self):
-        """增加成功计数"""
+        """增加置顶评论成功计数"""
         self.success_count += 1
 
     def increment_failure(self):
-        """增加失败计数"""
+        """增加置顶评论失败计数"""
         self.failure_count += 1
 
+    def increment_api_success(self):
+        """增加API动态列表成功计数"""
+        self.api_success_count += 1
+
+    def increment_api_failure(self):
+        """增加API动态列表失败计数"""
+        self.api_failure_count += 1
+
     def get_stats(self, total_loops=None):
-        """获取统计信息"""
+        """获取统计信息（含置顶评论 + API 双通道独立统计）"""
         total = total_loops if total_loops is not None else (self.success_count + self.failure_count)
         success_rate = (self.success_count / total * 100) if total > 0 else 0
+
+        api_total = self.api_success_count + self.api_failure_count
+        api_success_rate = (self.api_success_count / api_total * 100) if api_total > 0 else 0
 
         return {
             "重启后运行时间": self.get_uptime(),
@@ -128,7 +141,11 @@ class HealthChecker:
             "抓取成功次数": self.success_count,
             "抓取失败次数": total - self.success_count,
             "抓取成功率": f"{success_rate:.3f}%",
-            "最后一次抓取时间": datetime.fromtimestamp(self.last_health_check).strftime('%H:%M:%S')
+            "最后一次抓取时间": datetime.fromtimestamp(self.last_health_check).strftime('%H:%M:%S'),
+            "API请求次数": api_total,
+            "API成功次数": self.api_success_count,
+            "API失败次数": self.api_failure_count,
+            "API成功率": f"{api_success_rate:.3f}%",
         }
 
 

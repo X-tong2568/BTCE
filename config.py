@@ -33,7 +33,7 @@ LIVE_SUCCESS_RATE_THRESHOLD = 0.9  # 成功率阈值（P2告警）
 # ===== 动态监控配置 =====
 UP_NAME = "星瞳_Official"  # 监控目标昵称
 UP_UID = "401315430"  # 监控目标B站UID
-PINNED_DYNAMIC_ID = ""  # 置顶动态ID（手动配置）
+PINNED_DYNAMIC_ID = "1208161183564038147"  # 置顶动态ID（手动配置）
 CHECK_INTERVAL = 8  # 秒
 MAX_RETRY_ATTEMPTS = 3
 RETRY_DELAY = 5  # 秒
@@ -69,8 +69,13 @@ NO_UPDATE_ALERT_HOURS = 28      # 无更新提醒阈值（小时）
 PERFORMANCE_REPORT_CYCLE_INTERVAL = 8000  # 8000轮发送一次报告
 
 # ===== 告警阈值配置 =====
-P1_TOTAL_FAILURE_THRESHOLD = 100  # 失败次数阈值（P1告警）
-P2_SUCCESS_RATE_THRESHOLD = 0.8  # 成功率阈值（80%）
+# 置顶评论监控（Playwright浏览器）
+P1_TOTAL_FAILURE_THRESHOLD = 100  # 置顶评论连续失败次数阈值（P1告警）
+P2_SUCCESS_RATE_THRESHOLD = 0.8   # 置顶评论成功率阈值（80%，P2告警）
+
+# API动态列表（urllib HTTP请求，独立统计）
+API_P1_FAILURE_THRESHOLD = 10     # API连续失败次数阈值（P1告警，比浏览器更快告警）
+API_P2_SUCCESS_RATE_THRESHOLD = 0.9  # API成功率阈值（90%，比浏览器更严格）
 
 # ===== 系统状态检查间隔 =====
 SYSTEM_STATUS_CHECK_INTERVAL = 3600  # 系统状态检查间隔（秒）

@@ -118,13 +118,16 @@ class Monitor:
     # API 获取动态列表
     # ------------------------------------------------------------------
     async def get_api_dynamics(self, uid):
+        """获取API动态列表，返回 (list[dict], bool) — 列表 + 是否成功"""
         bili = BiliAPI(self.cookie_file)
-        result = await bili.get_dynamics(uid)
+        result, ok = await bili.get_dynamics(uid)
         await bili.close()
-        if result:
+        if ok and result:
             ids = [d["dynamic_id"][-8:] for d in result[:5]]
             logger.info(f"📡 API: {len(result)}条动态 ID尾号={ids}...")
-        return result
+        elif ok:
+            logger.info(f"📡 API: 0条动态（无新发布）")
+        return result, ok
 
     # ------------------------------------------------------------------
     # 新动态批量通知
@@ -421,7 +424,13 @@ class Monitor:
                     success = True
 
                 # 2) API 拿动态列表 → 检测新动态
-                api_list = await self.get_api_dynamics(uid)
+                api_list, api_ok = await self.get_api_dynamics(uid)
+                # API独立健康统计
+                if api_ok:
+                    self.health_checker.increment_api_success()
+                else:
+                    self.health_checker.increment_api_failure()
+                performance_monitor.record_api_result(api_ok)
                 if api_list:
                     seen = set(self.history_data.get("seen_dynamics", []))
                     is_cold = len(seen) == 0

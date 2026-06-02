@@ -18,5 +18,6 @@ tmp_*.json
 tmp_*.txt
 .claude/
 test_publish.py
+test_api_alerts.py
 *.png
 踩坑记录.md
