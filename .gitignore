@@ -20,4 +20,5 @@ tmp_*.txt
 test_publish.py
 test_api_alerts.py
 *.png
+mermaid-diagram.png
 踩坑记录.md

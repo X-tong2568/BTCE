@@ -2,6 +2,8 @@
 
 基于 Python + Playwright 的 Bilibili UP 主动态和直播自动化监控系统，支持多通道实时通知及自动发布动态。
 
+![BTCE 架构图](mermaid-diagram.png)
+
 ## 版本演进
 
 | 版本 | 主要变更 |
