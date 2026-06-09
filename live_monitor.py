@@ -77,6 +77,7 @@ class LiveMonitor:
             f"https://api.live.bilibili.com/xlive/web-room/v1/index/getInfoByRoom?room_id={room_id}",
         ]
 
+        result = None
         for idx, url in enumerate(urls, 1):
             try:
                 async with self.session.get(url) as resp:
@@ -90,7 +91,7 @@ class LiveMonitor:
                     if idx == 2:
                         data = data.get("room_info", {})
 
-                    return {
+                    result = {
                         "room_id": room_id,
                         "live_status": data.get("live_status", 0),
                         "title": data.get("title", ""),
@@ -98,9 +99,39 @@ class LiveMonitor:
                         "anchor_name": UP_NAME,
                         "check_time": datetime.now().isoformat(),
                     }
+                    break
             except Exception as e:
                 self.logger.error(f"API {idx} 异常: {e}")
-        return None
+
+        if result is None:
+            return None
+
+        # 补充 room_init 返回的特殊状态字段（加密/锁房/隐藏/付费等），先给默认值
+        result.setdefault("encrypted", False)
+        result.setdefault("is_locked", False)
+        result.setdefault("is_hidden", False)
+        result.setdefault("special_type", 0)
+        await self._enrich_room_init(result)
+        return result
+
+    async def _enrich_room_init(self, result: Dict[str, Any]):
+        """从 room_init 接口补充 encrypted/is_locked/is_hidden/special_type"""
+        try:
+            url = f"https://api.live.bilibili.com/room/v1/Room/room_init?id={result['room_id']}"
+            async with self.session.get(url) as resp:
+                if resp.status != 200:
+                    return
+                payload = await resp.json()
+                if payload.get("code") != 0:
+                    return
+                data = payload.get("data", {})
+                result["encrypted"] = data.get("encrypted", False)
+                result["is_locked"] = data.get("is_locked", False)
+                result["is_hidden"] = data.get("is_hidden", False)
+                result["special_type"] = data.get("special_type", 0)
+        except Exception as e:
+            self.logger.error(f"room_init 异常: {e}")
+            # room_init 失败不影响主流程，字段留默认值
 
     # ------------------------------------------------------------------
     # Core Logic
@@ -140,6 +171,26 @@ class LiveMonitor:
         return False, "no_change"
 
     # ------------------------------------------------------------------
+    # 状态标签（加密/锁房/隐藏/付费等，纯展示不触发通知）
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _build_status_tags(live_info: Dict[str, Any]) -> Optional[str]:
+        """根据 room_init 字段生成标签文本，无特殊状态返回 None"""
+        tags = []
+        if live_info.get("encrypted"):
+            tags.append("🔒 密码保护")
+        if live_info.get("is_locked"):
+            tags.append("🔐 房间已锁定")
+        if live_info.get("is_hidden"):
+            tags.append("👻 房间已隐藏")
+        st = live_info.get("special_type", 0)
+        if st == 1:
+            tags.append("💰 付费直播")
+        elif st == 2:
+            tags.append("🎊 拜年纪")
+        return " | ".join(tags) if tags else None
+
+    # ------------------------------------------------------------------
     # Email (完整样式 + 封面)
     # ------------------------------------------------------------------
     def format_email_content(self, live_info: Dict[str, Any]) -> (str, str):
@@ -156,6 +207,8 @@ class LiveMonitor:
         }.get(ct, ("📺", "状态更新"))
 
         subject = f"【{UP_NAME}直播监控】{text}"
+
+        status_tags = self._build_status_tags(live_info)
 
         html = f"""
 <!DOCTYPE html>
@@ -188,6 +241,7 @@ body {{ background:#f5f5f5; font-family:Microsoft YaHei; padding:20px }}
     <div class="info">
       <p><b>标题：</b>{title}</p>
       <p><b>时间：</b>{current_time}</p>
+      {"<p><b>⚠️ 特别状态：</b>" + status_tags + "</p>" if status_tags else ""}
     </div>
     <div style="text-align:center">
       <a class="btn" href="https://live.bilibili.com/{room_id}">
@@ -226,6 +280,10 @@ body {{ background:#f5f5f5; font-family:Microsoft YaHei; padding:20px }}
         qq_msg += f"标题：{title}\n"
         qq_msg += f"链接：https://live.bilibili.com/{room_id}\n"
         qq_msg += f"时间：{current_time}\n"
+
+        status_tags = self._build_status_tags(live_info)
+        if status_tags:
+            qq_msg += f"{status_tags}\n"
 
         if cover:
             qq_msg += f"封面：\n[CQ:image,file={cover}]\n"
