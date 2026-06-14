@@ -45,7 +45,7 @@ class QQMessageSender:
                         f"{self.api_url}/send_group_msg",
                         json=payload,
                         headers=self.headers,
-                        timeout=10
+                        timeout=30
                     ) as response:
 
                         if response.status == 200:

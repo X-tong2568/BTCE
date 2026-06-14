@@ -19,6 +19,7 @@ tmp_*.txt
 .claude/
 test_publish.py
 test_api_alerts.py
+manual_publish.py
 *.png
 !mermaid-diagram.png
 踩坑记录.md
