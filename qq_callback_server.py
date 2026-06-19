@@ -5,6 +5,7 @@ NapCat HTTP 事件回调服务器（v4.4）。
   - 更换置顶 <动态ID>  → 运行时替换置顶动态
   - 更新凭证           → 远程更新B站cookies（发二维码到邮箱）
   - 测试 / 状态        → 检查机器人运行状态
+  - 帮助 / help / 命令 → 显示所有可用指令
 """
 
 import re
@@ -219,6 +220,20 @@ async def handle_callback(request: web.Request) -> web.Response:
                     logger.error(f"重启浏览器失败: {e}")
 
         asyncio.create_task(_do_renewal())
+        return web.json_response({"status": "ok"})
+
+    # 帮助指令：@bot 帮助 / @bot help
+    if re.search(rf'\[CQ:at,qq={re.escape(QQ_BOT_QQ_ID)}[^\]]*\]\s*(帮助|help|命令)', message, re.IGNORECASE):
+        help_text = (
+            "📋 可用指令列表\n\n"
+            "🔹 通用指令（所有人可用）：\n"
+            "　@机器人 测试　→ 查看运行状态+成功率+凭证时间\n"
+            "　@机器人 帮助　→ 显示本帮助\n\n"
+            "🔸 管理指令（仅管理员）：\n"
+            "　@机器人 更换置顶 <动态ID>　→ 运行时替换置顶动态\n"
+            "　@机器人 更新凭证　→ 远程更新B站cookies（邮箱二维码）"
+        )
+        await _reply_to_group(group_id, help_text)
         return web.json_response({"status": "ok"})
 
     # 可以在此扩展更多指令
