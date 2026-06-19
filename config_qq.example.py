@@ -6,6 +6,12 @@ QQ_BOT_ACCESS_TOKEN = "your_token"
 QQ_GROUP_IDS = [
     "123456789",
 ]
+
+# 管理群列表（只接收@机器人指令，不接收监控推送）
+QQ_MANAGEMENT_GROUP_IDS = [
+    "",
+]
+
 MAX_MESSAGE_LENGTH = 2500
 QQ_PUSH_ENABLED = True
 

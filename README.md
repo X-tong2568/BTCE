@@ -1,4 +1,4 @@
-# BTCE 4.6 — B站动态/直播监控系统
+# BTCE 4.7 — B站动态/直播监控系统
 
 基于 Python + Playwright 的 Bilibili UP 主动态和直播自动化监控系统，支持多通道实时通知及自动发布动态。
 
@@ -18,6 +18,27 @@
 | **v4.4** | QQ群 @机器人 指令实时更换置顶动态ID：NapCat HTTP回调 + 权限校验 + 持久化+内存即时生效 |
 | **v4.5** | 修复 B站旧版 API 下线（404），更换 polymer 新版接口；API 独立健康统计+P1/P2告警+日报双通道 |
 | **v4.6** | 直播通知附加房间状态标签：room_init API 补充 encrypted/锁房/隐藏/付费/拜年纪，消息中标记 🔒密码保护 等 |
+| **v4.7** | 管理群独立 + Cookie远程更新（@机器人指令→邮箱二维码→扫码→自动保存）+ 测试指令增强（轮次/成功率展示） |
+
+## v4.7 更新
+
+- **管理群独立**：新增 `QQ_MANAGEMENT_GROUP_IDS` 配置，管理群只接收 `@机器人` 指令，不接收监控推送。推送群+管理群双列表控制命令权限
+- **Cookie 远程更新**：`@机器人 更新凭证` → B站 QR 登录 API 生成二维码 → 邮件内嵌二维码 → 管理员扫码 → 自动保存 `cookies.json` + 热重启浏览器加载新凭证。全程 HTTP API，无需本地浏览器
+- **测试指令增强**：`@机器人 测试/状态` 回复增加当前轮次、已运行时间、置顶抓取成功率、API 成功率、上次凭证更新时间
+- **新增 `cookie_renewer.py`**：独立模块，B站 `generate`/`poll` 双 API + `qrcode` 库 + MIME 邮件内嵌图片，`asyncio.to_thread` 隔离阻塞操作
+- **`monitor.py` 新增 `restart_browser()`**：无条件重启浏览器，凭证更新后热加载新 cookie
+- **`qq_callback_server.py` 扩展**：`更新凭证/测试/状态` 三条指令 + `_ALLOWED_CALLBACK_GROUPS` 推送群+管理群联合白名单 + 后台 `asyncio.create_task` 执行凭证更新
+- **QQ 测试群号规范**：btce-dev skill 约定测试消息统一发 `1073571216`（管理群），禁止使用生产群
+
+### XTong 的贡献
+- **需求设计**：Cookie 远程更新全流程设计（QQ指令→邮件二维码→手机扫码→自动保存）、管理群独立方案、测试指令信息展示
+- **交互评审**：邮件 vs QQ 群发二维码的方案选择、管理群隔离逻辑确认、凭证更新时间展示
+
+### Claude (AI Assistant) 的贡献
+- **cookie_renewer.py**：B站 QR 登录双 API 集成、`urllib` + `http.cookiejar` 自动捕获 Set-Cookie、`qrcode` 库本地生成二维码、`MIMEMultipart(related)` 邮件内嵌图片、旧 cookie 中设备指纹保留（buvid3/bili_ticket 等合并写回）
+- **qq_callback_server.py**：`更新凭证/测试/状态` 三条指令、`asyncio.create_task` 后台异步执行、`restart_browser()` 调用热加载
+- **monitor.py**：`restart_browser()` 无条件重启方法
+- **config_qq.example.py**：`QQ_MANAGEMENT_GROUP_IDS` 配置模板
 
 ## v4.6 更新
 
@@ -160,7 +181,8 @@ BTCE3.0/
 ├── email_utils.py             # SMTP 邮件发送
 ├── qq_message_generator.py    # QQ 消息生成
 ├── qq_utils.py                # QQ 机器人推送
-├── qq_callback_server.py      # QQ回调服务器（v4.4: @机器人指令）
+├── qq_callback_server.py      # QQ回调服务器（v4.4+: @机器人指令）
+├── cookie_renewer.py           # Cookie远程更新（v4.7: 邮件二维码→扫码→自动保存）
 ├── color_config.py            # 邮件渐变色配置
 ├── config.py                  # 主配置（含 PINNED_DYNAMIC_ID）
 ├── config_email.example.py    # 邮箱配置模板

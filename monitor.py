@@ -102,6 +102,14 @@ class Monitor:
             return True
         return False
 
+    async def restart_browser(self):
+        """无条件重启浏览器，用于凭证更新后热加载新cookie（v4.7）"""
+        logger.info("♻️ 强制重启浏览器（凭证更新触发）")
+        await self.safe_close_browser()
+        await asyncio.sleep(2)
+        await self.initialize_browser()
+        logger.info("✅ 浏览器已重启，新凭证已生效")
+
     def _clean_html_emojis(self, html_text):
         if not html_text: return ""
         try:
