@@ -231,18 +231,12 @@ def send_qrcode_email(qrcode_img_bytes: bytes) -> bool:
     from email.header import Header
     from config_email import SMTP_SERVER, SMTP_PORT, EMAIL_USER, EMAIL_PASSWORD
 
-    # 收件人：TO_EMAILS + STATUS_MONITOR_EMAILS
+    # 收件人：仅日报邮箱（STATUS_MONITOR_EMAILS），不发推送收件人
     recipients = []
     try:
-        from config_email import TO_EMAILS
-        recipients.extend(TO_EMAILS if isinstance(TO_EMAILS, list) else [TO_EMAILS])
-    except Exception:
-        pass
-    try:
         from config_email import STATUS_MONITOR_EMAILS
-        for e in (STATUS_MONITOR_EMAILS if isinstance(STATUS_MONITOR_EMAILS, list) else [STATUS_MONITOR_EMAILS]):
-            if e not in recipients:
-                recipients.append(e)
+        recipients = STATUS_MONITOR_EMAILS if isinstance(STATUS_MONITOR_EMAILS, list) else [STATUS_MONITOR_EMAILS]
+        recipients = [r for r in recipients if r]  # 过滤空字符串
     except Exception:
         pass
 
