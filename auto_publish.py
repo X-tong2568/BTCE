@@ -241,6 +241,9 @@ async def publish_live_update(cover_url: str, title: str, room_id: int,
         {"raw_text": f"\n⏰ 更新时间：{current_time}", "type": 1, "biz_id": ""},
         {"raw_text": f"\n🔗 {link_url}", "type": 1, "biz_id": ""},
     ]
+    # 封面图上传成功才附「当前封面」提示；降级纯文本时不出现空标签
+    if img:
+        contents.append({"raw_text": f"\n 当前封面：", "type": 1, "biz_id": ""})
     if status_tags:
         contents.append({"raw_text": f"\n⚠️ 房间状态：{status_tags}", "type": 1, "biz_id": ""})
 
