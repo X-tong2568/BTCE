@@ -171,6 +171,11 @@ async def publish_dynamic(dynamic_id: str, screenshot_path: str, cookies: list,
                     return True
                 else:
                     logger.error(f"❌ 动态发布失败: code={result.get('code')} msg={result.get('message')}")
+                    # 失败详情：正文全文（含随机字符）+ 图片URL + 完整响应，便于定位审核命中项
+                    text_all = "".join(c["raw_text"] for c in contents)
+                    logger.error(f"   提交正文: {text_all!r}")
+                    logger.error(f"   图片URL: {img}")
+                    logger.error(f"   完整响应: {json.dumps(result, ensure_ascii=False)}")
                     return False
     except Exception as e:
         logger.error(f"❌ 动态发布异常: {e}")
