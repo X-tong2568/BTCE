@@ -212,9 +212,10 @@ async def _download_cover_image(url: str) -> Optional[str]:
 async def publish_live_update(cover_url: str, title: str, room_id: int,
                                status_tags: str, cookies: list,
                                topic_id: int, topic_name: str,
-                               up_name: str) -> bool:
+                               up_name: str, event_type: str = "title_change") -> bool:
     """
     发布直播间标题更新到B站动态（封面图+标题+时间+链接+状态标签）。
+    event_type: "title_change"=标题更新, "live_start"=开播同轮改标题
     封面下载/上传失败不阻塞，降级为纯文本动态。
     返回True表示发布成功，False表示失败。
     """
@@ -240,10 +241,16 @@ async def publish_live_update(cover_url: str, title: str, room_id: int,
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     link_url = f"https://live.bilibili.com/{room_id}"
 
+    # 开播同轮改标题与纯标题更新使用不同文案
+    is_live_start = event_type == "live_start"
+    headline = "直播开播！" if is_live_start else "直播间标题更新！"
+    title_label = "当前标题" if is_live_start else "新标题"
+    time_label = "开播时间" if is_live_start else "更新时间"
+
     contents = [
-        {"raw_text": f"【{up_name}】直播间标题更新！", "type": 1, "biz_id": ""},
-        {"raw_text": f"\n✏️ 新标题：{title}", "type": 1, "biz_id": ""},
-        {"raw_text": f"\n⏰ 更新时间：{current_time}", "type": 1, "biz_id": ""},
+        {"raw_text": f"【{up_name}】{headline}", "type": 1, "biz_id": ""},
+        {"raw_text": f"\n✏️ {title_label}：{title}", "type": 1, "biz_id": ""},
+        {"raw_text": f"\n⏰ {time_label}：{current_time}", "type": 1, "biz_id": ""},
         {"raw_text": f"\n🔗 {link_url}", "type": 1, "biz_id": ""},
     ]
     # 封面图上传成功才附「当前封面」提示；降级纯文本时不出现空标签

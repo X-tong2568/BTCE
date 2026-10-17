@@ -4,7 +4,7 @@ import time
 import json
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from logger_config import logger
 from self_monitor import live_failure_counter
 from retry_decorator import NETWORK_RETRY_CONFIG, async_retry
@@ -180,27 +180,35 @@ class LiveMonitor:
 
         live_failure_counter.record_success()
 
-        changed, change_type = self.detect_status_change(current)
+        changed, change_type, title_changed = self.detect_status_change(current)
         current["status_changed"] = changed
         current["change_type"] = change_type
+        current["title_changed"] = title_changed
 
         self.last_live_status = current
         self._save_state()  # 持久化，重启后能对比变化
         return current
 
-    def detect_status_change(self, current: Dict[str, Any]) -> (bool, str):
+    def detect_status_change(self, current: Dict[str, Any]) -> Tuple[bool, str, bool]:
+        """检测状态变化，返回 (是否有变化, 变化类型, 标题是否变化)"""
         if self.last_live_status is None:
-            return False, "initial"
+            return False, "initial", False
 
         old = self.last_live_status
 
+        # 标题变化单独记录：即使同一轮开播优先，B站渠道仍需知道标题变了
+        title_changed = bool(
+            old.get("title") != current.get("title") and current.get("title")
+        )
+
         if old["live_status"] != current["live_status"]:
-            return True, "live_start" if current["live_status"] == 1 else "live_end"
+            change_type = "live_start" if current["live_status"] == 1 else "live_end"
+            return True, change_type, title_changed
 
-        if old.get("title") != current.get("title") and current.get("title"):
-            return True, "title_change"
+        if title_changed:
+            return True, "title_change", True
 
-        return False, "no_change"
+        return False, "no_change", False
 
     # ------------------------------------------------------------------
     # 状态标签（加密/锁房/隐藏/付费等，纯展示不触发通知）

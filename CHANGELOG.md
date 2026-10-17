@@ -2,6 +2,17 @@
 
 BTCE 各版本详细变更记录。简表见 [README.md](README.md#版本演进)。
 
+## v4.15 — 开播与标题同轮变化不再丢失B站动态 (2026-10)
+
+- **问题**：`detect_status_change()` 每轮只上报一种变化且开播优先。主播在下播状态改标题后立即开播时，标题变化被 `live_start` 覆盖：QQ/邮件只收到开播提醒，B站动态渠道因只认 `title_change` 而完全不发布
+- **检测层**：`live_monitor.py` 的 `detect_status_change()` 改为返回 `(是否有变化, 变化类型, 标题是否变化)`；`change_type` 保持开播优先，新增 `title_changed` 标志并随 `live_state.json` 持久化
+- **调度层**：`monitor_scheduler.py` 的B站动态发布条件增加「`change_type == "live_start"` 且 `title_changed`」分支；QQ/邮件仍只发送一条开播提醒，不重复打扰
+- **文案层**：`auto_publish.publish_live_update()` 新增 `event_type` 参数，开播场景使用「直播开播！当前标题/开播时间」文案，纯标题更新维持原文案
+- **边界**：仅放行 `live_start`，下播同轮标题变化不触发B站动态；标题短暂为空不算变化
+- **验证**：8 项冒烟用例全部通过（首次启动/仅开播/开播+标题同轮/直播中改题/无变化/仅下播/下播+改题/标题为空）
+
+AI-assisted: Claude Code (Anthropic)
+
 ## v4.14 — 置顶动态自动发现+手动/自动双模式 (2026-07)
 
 - **置顶动态自动发现**：通过 API `modules.module_tag.text` 字段识别置顶，替换手动配置 `PINNED_DYNAMIC_ID`

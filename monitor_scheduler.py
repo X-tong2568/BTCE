@@ -116,8 +116,14 @@ class LiveMonitorScheduler:
                 self.logger.info(f"✅ QQ直播通知发送结果: {qq_success_count}/{len(qq_results)} 成功")
 
             # ── B站动态发布：标题更新时同步到话题 ──
+            # 开播同轮改标题时，QQ/邮件只发一条开播提醒，但B站渠道仍需发布
+            title_changed_on_start = (
+                live_info.get("change_type") == "live_start"
+                and live_info.get("title_changed")
+            )
             if (LIVE_BILI_PUBLISH_ENABLED
-                    and live_info.get("change_type") == "title_change"):
+                    and (live_info.get("change_type") == "title_change"
+                         or title_changed_on_start)):
                 cookies = self._load_cookies_list()
                 if cookies:
                     status_tags = qq_message_generator.build_live_status_tags(live_info) or ""
@@ -131,9 +137,13 @@ class LiveMonitorScheduler:
                             topic_id=AUTO_PUBLISH_TOPIC_ID,
                             topic_name=AUTO_PUBLISH_TOPIC_NAME,
                             up_name=UP_NAME,
+                            event_type="live_start" if title_changed_on_start else "title_change",
                         )
                     )
-                    self.logger.info("📤 直播标题更新B站动态已提交")
+                    self.logger.info(
+                        "📤 开播B站动态已提交" if title_changed_on_start
+                        else "📤 直播标题更新B站动态已提交"
+                    )
                 else:
                     self.logger.warning("⚠️ 无Cookie，跳过B站直播动态发布")
 
