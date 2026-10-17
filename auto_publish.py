@@ -253,11 +253,12 @@ async def publish_live_update(cover_url: str, title: str, room_id: int,
         {"raw_text": f"\n⏰ {time_label}：{current_time}", "type": 1, "biz_id": ""},
         {"raw_text": f"\n🔗 {link_url}", "type": 1, "biz_id": ""},
     ]
+    # 房间状态在前，「当前封面：」固定为最后一行（图片显示在正文末尾）
+    if status_tags:
+        contents.append({"raw_text": f"\n⚠️ 房间状态：{status_tags}", "type": 1, "biz_id": ""})
     # 封面图上传成功才附「当前封面」提示；降级纯文本时不出现空标签
     if img:
         contents.append({"raw_text": f"\n 当前封面：", "type": 1, "biz_id": ""})
-    if status_tags:
-        contents.append({"raw_text": f"\n⚠️ 房间状态：{status_tags}", "type": 1, "biz_id": ""})
 
     # 3) 发布动态
     mid = _mid_from_cookies(cookies)
