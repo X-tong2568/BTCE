@@ -2,6 +2,23 @@
 
 BTCE 各版本详细变更记录。简表见 [README.md](README.md#版本演进)。
 
+## v4.16 — 置顶评论卡片渲染替代页面截图 (2026-10)
+
+- **背景**：直接截 B站页面元素得到的图片又细又宽，发布到 B站新版动态后可能被裁切或放大局部，内容看不全
+- **新增 `pinned_card_renderer.py`**：
+  - 评论正文、表情、评论图片继续走 DOM，用 `i#top` 保证取到的是置顶评论
+  - 作者、评论时间 `ctime`、IP 属地走评论 API；先用 `basic.comment_id_str` 取评论区 oid，再用 DOM rpid 与 API rpid 校验，不一致时不使用该条 API 的 IP/时间/作者
+  - 头像使用 API 合成装扮图，本地缓存，默认 24 小时刷新；接口失败时用过期缓存或普通头像
+  - 固定画布 1080 宽、最小高度 890，评论图片铺满内容区宽度，长图自动增高
+  - Playwright 输出 1x PNG，金色签名固定在右下角；默认示例签名 `assets/signature_example.png`
+- **`monitor.py`**：screenshot 模式先生成卡片，QQ/邮件/B站共用；任一通道需要图片只生成一次；生成失败自动回退旧截图
+- **`config.py`**：新增 `CARD_WIDTH`、`CARD_MIN_HEIGHT`、`CARD_TEXT_FONT_SIZE`、`CARD_COMMENT_IMAGE_WIDTH`、`CARD_SIGNATURE_PATH`、`CARD_SCALE_FACTOR` 等配置
+- **`config_custom.example.py`**：新增签名路径示例，实际使用时替换示例签名
+- **部署**：服务器 `config_custom.py` 只追加 `CARD_SIGNATURE_PATH`，未覆盖原有文案；`auto_publish.py` 未改动，B站正文检测时间行保留；启动日志无异常
+- **验证**：本地用历史邮件样本验证长文/长图/多表情/多图；服务器端生成预览卡片验证字体/表情/签名；未发布测试动态
+
+AI-assisted: Claude Code (Anthropic)
+
 ## v4.15 — 开播与标题同轮变化不再丢失B站动态 (2026-10)
 
 - **问题**：`detect_status_change()` 每轮只上报一种变化且开播优先。主播在下播状态改标题后立即开播时，标题变化被 `live_start` 覆盖：QQ/邮件只收到开播提醒，B站动态渠道因只认 `title_change` 而完全不发布

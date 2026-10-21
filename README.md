@@ -1,4 +1,4 @@
-# BTCE 4.15 — B站动态/直播监控系统
+# BTCE 4.16 — B站动态/直播监控系统
 
 基于 Python + Playwright 的 Bilibili UP 主动态和直播自动化监控系统，支持多通道实时通知及自动发布动态。
 
@@ -12,6 +12,7 @@
 
 | 版本 | 主要变更 |
 |------|---------|
+| **v4.16** | 置顶评论截图改为固定宽度卡片渲染 |
 | **v4.15** | 开播与标题同轮变化：QQ/邮件只推开播，B站动态照常发布 |
 | **v4.14** | 置顶动态自动发现：API module_tag 识别置顶，更换时邮件通知管理邮箱，1h定时检测 |
 | **v4.13** | 动态类型过滤：排除B站开播自动生成的 DYNAMIC_TYPE_LIVE_RCMD 动态，通过 config.DYNAMIC_SKIP_TYPES 配置 |
@@ -34,7 +35,7 @@
 
 ## 核心功能
 
-1. **置顶评论监控** — Playwright 打开置顶动态，抓取置顶评论文字+图片，变化时推送邮件/QQ/B站；推送模式三通道可配；支持 QQ 群 @机器人 实时更换置顶动态ID
+1. **置顶评论监控** — Playwright 打开置顶动态，抓取置顶评论文字+图片，变化时推送邮件/QQ/B站；推送模式三通道可配（screenshot 模式使用固定宽度卡片渲染）；支持 QQ 群 @机器人 实时更换置顶动态ID
 2. **新动态检测** — API 定时获取动态列表，差集比对发现新动态，卡片截图 QQ 推送
 3. **直播监控** — 轮询 B站直播 API，开播/下播/标题变化即时通知；标题更新自动发布B站动态（封面+链接+房间状态标签）
 4. **多通道通知** — 邮件（HTML 格式）+ QQ 群（文字/CQ码图片/卡片截图）+ B站动态话题
@@ -45,7 +46,8 @@
 ```
 BTCE/
 ├── main.py                    # 程序入口
-├── monitor.py                 # 核心监控逻辑（v4.14: +置顶更换检测+公用截图）
+├── monitor.py                 # 核心监控逻辑（v4.16: screenshot 模式接入卡片渲染）
+├── pinned_card_renderer.py    # 置顶评论卡片渲染（v4.16）
 ├── auto_publish.py            # B站动态自动发布模块（v4.2）
 ├── bili_api.py                # B站动态列表 API 客户端（v4.14: +_fetch_raw+module_tag）
 ├── pinned_dynamic_monitor.py  # 置顶自动发现+手动/自动双模式（v4.14）
@@ -71,6 +73,7 @@ BTCE/
 ├── logger_config.py           # 日志配置
 ├── get_cookies.py             # Cookie 获取工具
 ├── manual_publish.py          # 手动发布B站动态工具
+├── assets/                    # 卡片资源（示例签名 PNG）
 ├── requirements.txt           # Python 依赖
 ├── LICENSE                    # MIT 开源协议
 ├── mermaid-diagram.png        # 架构流程图
@@ -123,11 +126,18 @@ pm2 start main.py --name bili-monitor --interpreter python3
 | 置顶更换检测间隔 | `config.py` `PINNED_CHECK_INTERVAL` | 默认 3600s（1小时） |
 | 动态类型过滤 | `config.py` `DYNAMIC_SKIP_TYPES` | 排除自动生成的动态类型（v4.13） |
 | 检查间隔 | `config.py` `CHECK_INTERVAL` | 默认 6 秒 |
-| 推送模式 | `config.py` `QQ_MODE`/`EMAIL_MODE`/`BILI_MODE` | text=文字+图片, screenshot=截图 |
+| 推送模式 | `config.py` `QQ_MODE`/`EMAIL_MODE`/`BILI_MODE` | text=文字+图片, screenshot=卡片渲染 |
+| 卡片渲染 | `config.py` `CARD_*` | 宽度/字号/评论图宽度/签名路径；签名可在 config_custom.py 覆盖 |
 | 个性化文案 | `config_custom.py` | 覆盖通用默认值（QQ消息/邮件标题等），gitignored |
 | 邮箱 | `config_email.py` | SMTP + 收发人 |
 | QQ 推送 | `config_qq.py` | 机器人 API + 群号 |
 | 浏览器参数 | `config.py` `BROWSER_CONFIG` | headless 模式 |
+
+### 卡片签名
+
+- 默认使用 `assets/signature_example.png`（内容为 BTCE）作为示例签名。
+- 实际使用时在 `config_custom.py` 中设置 `CARD_SIGNATURE_PATH = "assets/your_signature.png"`，支持 PNG/JPG/WebP/SVG。
+- 真实签名只放本地或服务器，不要提交到公开仓库。
 
 ## 注意事项
 

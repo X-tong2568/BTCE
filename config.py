@@ -98,6 +98,24 @@ QQ_MODE = "text"
 EMAIL_MODE = "text"
 BILI_MODE = "screenshot"
 
+# ===== 置顶评论卡片渲染配置 =====
+# screenshot 模式改为渲染统一卡片，不再直接截 B站页面元素
+CARD_WIDTH = 1080                  # 卡片宽度（px）
+CARD_MIN_HEIGHT = 890              # 最小高度，保证宽高比约 1.21，避免 B站动态裁切
+CARD_PADDING = 69                  # 卡片内边距
+CARD_AVATAR_SIZE = 127             # 头像尺寸
+CARD_NAME_FONT_SIZE = 43           # 名字字号
+CARD_META_FONT_SIZE = 20           # 时间/IP 字号
+CARD_TEXT_FONT_SIZE = 37           # 正文字号
+CARD_COMMENT_IMAGE_WIDTH = 0       # 0=铺满内容区（和正文同宽）；正数=固定像素宽
+CARD_SIGNATURE_WIDTH = 202         # 签名图片宽度
+CARD_SIGNATURE_PATH = "assets/signature_example.png"  # 示例签名；真实签名在 config_custom.py 覆盖
+CARD_TIME_SOURCE = "comment"       # comment=评论 ctime；detect=检测时间
+CARD_SCALE_FACTOR = 1              # 1=1080宽；1.5=1620宽；2=2160宽（更清晰，文件更大）
+CARD_PROFILE_CACHE_TTL = 86400     # 头像/头像框缓存有效期（秒）
+CARD_ASSET_CACHE_DIR = BASE_DIR / "data" / "card_assets"
+CARD_DYNAMIC_CACHE_FILE = BASE_DIR / "data" / "card_dynamic_cache.json"
+
 # ===== 动态自动发布配置 =====
 AUTO_PUBLISH_ENABLED = True  # 置顶评论变更时自动发布B站动态（含截图+话题+链接，dry-run模式见auto_publish.py）
 AUTO_PUBLISH_TOPIC_ID = 66066  # 话题ID（小星星的家）

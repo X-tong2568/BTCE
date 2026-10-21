@@ -22,6 +22,7 @@ test_api_alerts.py
 manual_publish.py
 *.png
 !mermaid-diagram.png
+!assets/signature_example.png
 踩坑记录.md
 开发者指南-仿站必读.md
 *诊断报告*.md

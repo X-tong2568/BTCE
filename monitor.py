@@ -31,6 +31,7 @@ from config_qq import QQ_GROUP_IDS
 from bili_api import BiliAPI
 from pinned_dynamic_monitor import check_pinned_dynamic, set_mode_manual, set_mode_auto, get_mode
 from color_config import ColorConfig
+from pinned_card_renderer import generate_pinned_card
 import auto_publish
 
 
@@ -478,13 +479,38 @@ class Monitor:
         """发送通知：按QQ_MODE/EMAIL_MODE/BILI_MODE分流，text模式先推不阻塞截图"""
         try:
             ct = time.strftime("%Y-%m-%d %H:%M:%S")
-            screenshot_path = None  # 延迟截图，text模式通道不依赖它
+            screenshot_path = None
+
+            # screenshot 模式统一先生成卡片；任一通道需要图片就生成一次
+            need_image = (
+                QQ_MODE == "screenshot"
+                or EMAIL_MODE == "screenshot"
+                or (AUTO_PUBLISH_ENABLED and BILI_MODE == "screenshot")
+            )
+            if need_image:
+                try:
+                    screenshot_path = await generate_pinned_card(
+                        browser=self.browser,
+                        dynamic_id=dynamic_id,
+                        current_html=cur_html,
+                        current_images=cur_img,
+                        rpid=rpid,
+                        cookies=await self.context.cookies(),
+                        detect_time=ct,
+                        output_dir=self.mail_save_dir,
+                    )
+                except Exception as e:
+                    logger.warning(f"卡片生成异常，回退旧截图: {e}")
+                    screenshot_path = None
+
+                if screenshot_path:
+                    logger.info(f"卡片已生成: {screenshot_path}")
+                else:
+                    logger.warning("卡片生成失败，回退旧截图")
+                    screenshot_path = await self._take_pinned_comment_screenshot(dynamic_id)
 
             # ── 1) QQ推送 ──
             if QQ_MODE == "screenshot":
-                # screenshot模式需要先截图
-                if not screenshot_path:
-                    screenshot_path = await self._take_pinned_comment_screenshot(dynamic_id)
                 qq_sp = screenshot_path
             else:
                 qq_sp = None  # text模式：纯文本+alt属性+评论区图片
@@ -495,8 +521,6 @@ class Monitor:
 
             # ── 2) 邮件推送 ──
             if EMAIL_MODE == "screenshot":
-                if not screenshot_path:
-                    screenshot_path = await self._take_pinned_comment_screenshot(dynamic_id)
                 email_sp = screenshot_path
             else:
                 email_sp = None  # text模式：文字+表情+评论区图片
@@ -507,8 +531,6 @@ class Monitor:
 
             # ── 3) B站发布 ──
             if AUTO_PUBLISH_ENABLED and BILI_MODE == "screenshot":
-                if not screenshot_path:
-                    screenshot_path = await self._take_pinned_comment_screenshot(dynamic_id)
                 if screenshot_path:
                     # 提取置顶评论纯文本（与QQ推送一致：img替换为alt文本）
                     try:
