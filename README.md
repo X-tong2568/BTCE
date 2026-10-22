@@ -1,4 +1,4 @@
-# BTCE 4.16 — B站动态/直播监控系统
+# BTCE 4.17 — B站动态/直播监控系统
 
 基于 Python + Playwright 的 Bilibili UP 主动态和直播自动化监控系统，支持多通道实时通知及自动发布动态。
 
@@ -12,6 +12,7 @@
 
 | 版本 | 主要变更 |
 |------|---------|
+| **v4.17** | 卡片字号加大、图片缩至1/3、签名居中、短内容自动放大 |
 | **v4.16** | 置顶评论截图改为固定宽度卡片渲染 |
 | **v4.15** | 开播与标题同轮变化：QQ/邮件只推开播，B站动态照常发布 |
 | **v4.14** | 置顶动态自动发现：API module_tag 识别置顶，更换时邮件通知管理邮箱，1h定时检测 |
@@ -47,7 +48,7 @@
 BTCE/
 ├── main.py                    # 程序入口
 ├── monitor.py                 # 核心监控逻辑（v4.16: screenshot 模式接入卡片渲染）
-├── pinned_card_renderer.py    # 置顶评论卡片渲染（v4.16）
+├── pinned_card_renderer.py    # 置顶评论卡片渲染（v4.17：字号/图片宽度/签名位置）
 ├── auto_publish.py            # B站动态自动发布模块（v4.2）
 ├── bili_api.py                # B站动态列表 API 客户端（v4.14: +_fetch_raw+module_tag）
 ├── pinned_dynamic_monitor.py  # 置顶自动发现+手动/自动双模式（v4.14）
@@ -127,7 +128,7 @@ pm2 start main.py --name bili-monitor --interpreter python3
 | 动态类型过滤 | `config.py` `DYNAMIC_SKIP_TYPES` | 排除自动生成的动态类型（v4.13） |
 | 检查间隔 | `config.py` `CHECK_INTERVAL` | 默认 6 秒 |
 | 推送模式 | `config.py` `QQ_MODE`/`EMAIL_MODE`/`BILI_MODE` | text=文字+图片, screenshot=卡片渲染 |
-| 卡片渲染 | `config.py` `CARD_*` | 宽度/字号/评论图宽度/签名路径；签名可在 config_custom.py 覆盖 |
+| 卡片渲染 | `config.py` `CARD_*` | 宽度/常规字号/短内容字号/评论图宽度/签名路径；签名可在 config_custom.py 覆盖 |
 | 个性化文案 | `config_custom.py` | 覆盖通用默认值（QQ消息/邮件标题等），gitignored |
 | 邮箱 | `config_email.py` | SMTP + 收发人 |
 | QQ 推送 | `config_qq.py` | 机器人 API + 群号 |

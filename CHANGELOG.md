@@ -2,6 +2,18 @@
 
 BTCE 各版本详细变更记录。简表见 [README.md](README.md#版本演进)。
 
+## v4.17 — 置顶评论卡片样式优化 (2026-10)
+
+- **字号**：常规正文 37→46px；无图片且纯文本不超过 60 字的短评论自动使用 54px；名字 43→48px，时间/IP 20→24px，头像 127→140px
+- **评论图片**：默认宽度从铺满内容区改为 300px（约 1/3 内容宽度），图片区域居中，多图自动换行
+- **布局**：正文区域改为垂直居中；最小高度 890→700px，短内容不再顶部堆叠、下半张大片留白
+- **签名**：从右下角移到底部居中
+- **配置**：新增 `CARD_SHORT_TEXT_FONT_SIZE`、`CARD_SHORT_TEXT_MAX_CHARS`；调整 `CARD_MIN_HEIGHT`、`CARD_TEXT_FONT_SIZE`、`CARD_COMMENT_IMAGE_WIDTH` 等默认值
+- **验证**：用服务器 2026-10-22 两条真实置顶评论在本地渲染，短内容 1080×700、长内容 1080×1517，字号/图片/签名位置正常
+- **部署**：仅更新 `config.py`（保留服务器 `PINNED_DYNAMIC_ID`）和 `pinned_card_renderer.py`；未覆盖 `auto_publish.py`、`config_custom.py`
+
+AI-assisted: Claude Code (Anthropic)
+
 ## v4.16 — 置顶评论卡片渲染替代页面截图 (2026-10)
 
 - **背景**：直接截 B站页面元素得到的图片又细又宽，发布到 B站新版动态后可能被裁切或放大局部，内容看不全

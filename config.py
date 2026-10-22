@@ -101,13 +101,15 @@ BILI_MODE = "screenshot"
 # ===== 置顶评论卡片渲染配置 =====
 # screenshot 模式改为渲染统一卡片，不再直接截 B站页面元素
 CARD_WIDTH = 1080                  # 卡片宽度（px）
-CARD_MIN_HEIGHT = 890              # 最小高度，保证宽高比约 1.21，避免 B站动态裁切
+CARD_MIN_HEIGHT = 700              # 最小高度（v4.17 由 890 调小，减少短内容的空白）
 CARD_PADDING = 69                  # 卡片内边距
-CARD_AVATAR_SIZE = 127             # 头像尺寸
-CARD_NAME_FONT_SIZE = 43           # 名字字号
-CARD_META_FONT_SIZE = 20           # 时间/IP 字号
-CARD_TEXT_FONT_SIZE = 37           # 正文字号
-CARD_COMMENT_IMAGE_WIDTH = 0       # 0=铺满内容区（和正文同宽）；正数=固定像素宽
+CARD_AVATAR_SIZE = 140             # 头像尺寸
+CARD_NAME_FONT_SIZE = 48           # 名字字号
+CARD_META_FONT_SIZE = 24           # 时间/IP 字号
+CARD_TEXT_FONT_SIZE = 46           # 常规正文字号（v4.17 由 37 调大，避免缩略图里看不清）
+CARD_SHORT_TEXT_FONT_SIZE = 54     # 短评论正文字号（无图片且文字较少时自动使用）
+CARD_SHORT_TEXT_MAX_CHARS = 60     # 短评论判定阈值：纯文本字符数不超过该值
+CARD_COMMENT_IMAGE_WIDTH = 300     # 评论图片宽度，约内容区 1/3；0=铺满内容区
 CARD_SIGNATURE_WIDTH = 202         # 签名图片宽度
 CARD_SIGNATURE_PATH = "assets/signature_example.png"  # 示例签名；真实签名在 config_custom.py 覆盖
 CARD_TIME_SOURCE = "comment"       # comment=评论 ctime；detect=检测时间

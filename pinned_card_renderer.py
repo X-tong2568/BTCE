@@ -28,6 +28,8 @@ from config import (
     CARD_PADDING,
     CARD_PROFILE_CACHE_TTL,
     CARD_SCALE_FACTOR,
+    CARD_SHORT_TEXT_FONT_SIZE,
+    CARD_SHORT_TEXT_MAX_CHARS,
     CARD_SIGNATURE_PATH,
     CARD_SIGNATURE_WIDTH,
     CARD_TEXT_FONT_SIZE,
@@ -456,6 +458,27 @@ def _api_picture_urls(content: dict) -> List[str]:
     return result
 
 
+def _pick_text_font_size(content_html: str, image_urls: List[str]) -> int:
+    """
+    选择正文字号：无图片且文字较少的短评论用更大字号。
+
+    Args:
+        content_html: 已清洗的正文 HTML
+        image_urls: 评论图片 URL 列表
+    Returns:
+        正文字号（px）
+    """
+    if image_urls:
+        return CARD_TEXT_FONT_SIZE
+    try:
+        plain_text = BeautifulSoup(content_html, "html.parser").get_text(" ", strip=True)
+    except Exception:
+        plain_text = ""
+    if len(plain_text) <= CARD_SHORT_TEXT_MAX_CHARS:
+        return CARD_SHORT_TEXT_FONT_SIZE
+    return CARD_TEXT_FONT_SIZE
+
+
 # ============================================================
 # 图片下载 / data URI
 # ============================================================
@@ -585,8 +608,13 @@ def _build_card_html(
     location: str,
     content_html: str,
     images_html: str,
+    text_font_size: Optional[int] = None,
 ) -> str:
     """拼出完整的卡片 HTML（自包含 CSS）"""
+    try:
+        body_font_size = int(text_font_size or CARD_TEXT_FONT_SIZE)
+    except (TypeError, ValueError):
+        body_font_size = CARD_TEXT_FONT_SIZE
     name = html.escape(str(author.get("name") or UP_NAME))
     name_color = _safe_color(author.get("nickname_color"))
     meta_parts = [html.escape(timestamp)]
@@ -635,6 +663,12 @@ def _build_card_html(
         align-items: center;
         gap: 28px;
     }}
+    .main {{
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }}
     .avatar-box {{
         width: {CARD_AVATAR_SIZE}px;
         height: {CARD_AVATAR_SIZE}px;
@@ -677,7 +711,7 @@ def _build_card_html(
     }}
     .content {{
         margin-top: 44px;
-        font-size: {CARD_TEXT_FONT_SIZE}px;
+        font-size: {body_font_size}px;
         color: #222;
         line-height: 1.6;
         word-break: break-word;
@@ -697,18 +731,15 @@ def _build_card_html(
     .images {{
         display: flex;
         flex-wrap: wrap;
+        justify-content: center;
         gap: 14px;
         margin-top: 28px;
     }}
     .images img {{
         border-radius: 6px;
     }}
-    .spacer {{
-        flex: 1 1 auto;
-        min-height: 40px;
-    }}
     .signature {{
-        align-self: flex-end;
+        align-self: center;
         margin-top: 24px;
     }}
     .signature img {{
@@ -728,8 +759,9 @@ def _build_card_html(
             <div class="meta">{meta_text}</div>
         </div>
     </div>
-    <div class="content">{content_html}{images_html}</div>
-    <div class="spacer"></div>
+    <div class="main">
+        <div class="content">{content_html}{images_html}</div>
+    </div>
     {signature_html}
 </div>
 </body>
@@ -955,6 +987,7 @@ async def generate_pinned_card(
         location = (reply_control.get("location") or "") if rpid_match else ""
 
         # 6) 组装 + 渲染
+        text_font_size = _pick_text_font_size(content_html, image_urls)
         card_html = _build_card_html(
             author=author,
             avatar_data_uri=avatar_data_uri,
@@ -963,6 +996,7 @@ async def generate_pinned_card(
             location=location,
             content_html=content_html,
             images_html=images_html,
+            text_font_size=text_font_size,
         )
         ts = time.strftime("%Y%m%d%H%M%S")
         output_path = output_dir / f"pinned_card_{dynamic_id}_{ts}.png"

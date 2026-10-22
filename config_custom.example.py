@@ -31,6 +31,10 @@
 # 真实签名放在本地/服务器，不要提交到公开仓库
 # CARD_SIGNATURE_PATH = "assets/your_signature.png"
 # CARD_SIGNATURE_WIDTH = 202
-# CARD_COMMENT_IMAGE_WIDTH = 0  # 0=铺满内容区；正数=固定像素宽
+# CARD_MIN_HEIGHT = 700  # 卡片最小高度（短内容减少空白）
+# CARD_TEXT_FONT_SIZE = 46  # 常规正文字号
+# CARD_SHORT_TEXT_FONT_SIZE = 54  # 短评论正文字号（无图片且文字较少时）
+# CARD_SHORT_TEXT_MAX_CHARS = 60  # 短评论判定阈值（纯文本字符数）
+# CARD_COMMENT_IMAGE_WIDTH = 300  # 评论图片宽度，约内容区1/3；0=铺满内容区
 # CARD_TIME_SOURCE = "comment"  # comment=评论 ctime；detect=检测时间
 # CARD_SCALE_FACTOR = 1  # 1=1080宽；1.5=1620宽；2=2160宽（更清晰，文件更大）
