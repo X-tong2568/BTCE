@@ -11,6 +11,7 @@ BTCE 各版本详细变更记录。简表见 [README.md](README.md#版本演进)
 - **配置**：新增 `CARD_SHORT_TEXT_FONT_SIZE`、`CARD_SHORT_TEXT_MAX_CHARS`；调整 `CARD_MIN_HEIGHT`、`CARD_TEXT_FONT_SIZE`、`CARD_COMMENT_IMAGE_WIDTH` 等默认值
 - **验证**：用服务器 2026-10-22 两条真实置顶评论在本地渲染，短内容 1080×700、长内容 1080×1517，字号/图片/签名位置正常
 - **部署**：仅更新 `config.py`（保留服务器 `PINNED_DYNAMIC_ID`）和 `pinned_card_renderer.py`；未覆盖 `auto_publish.py`、`config_custom.py`
+- **修正（2026-10-23）**：名字字号 48px 在实际卡片中偏大，调回 43px；服务器已同步并重启验证
 
 AI-assisted: Claude Code (Anthropic)
 
