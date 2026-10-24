@@ -407,6 +407,11 @@ def _sanitize_dom_html(raw_html: str) -> str:
                 img.decompose()
                 continue
             img["src"] = src
+            # B站表情图自带 style="width:50px;height:50px" 内联样式，
+            # 优先级高于 class CSS，会导致表情尺寸不随正文字号缩放，故移除
+            img.attrs.pop("style", None)
+            img.attrs.pop("width", None)
+            img.attrs.pop("height", None)
             img["class"] = "emote"
             img["loading"] = "eager"
             img["onerror"] = (
