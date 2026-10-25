@@ -736,7 +736,7 @@ def _build_card_html(
     .images {{
         display: flex;
         flex-wrap: wrap;
-        justify-content: center;
+        justify-content: flex-start;
         gap: 14px;
         margin-top: 28px;
     }}

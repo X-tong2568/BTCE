@@ -13,6 +13,7 @@ BTCE 各版本详细变更记录。简表见 [README.md](README.md#版本演进)
 - **部署**：仅更新 `config.py`（保留服务器 `PINNED_DYNAMIC_ID`）和 `pinned_card_renderer.py`；未覆盖 `auto_publish.py`、`config_custom.py`
 - **修正（2026-10-23）**：名字字号 48px 在实际卡片中偏大，调回 43px；服务器已同步并重启验证
 - **修正（2026-10-24）**：B站表情图自带内联 `style="width:50px;height:50px"`，优先级高于卡片 CSS，导致表情尺寸不随正文字号缩放；清洗 DOM 时移除表情图的 `style`/`width`/`height`，改由 CSS `height:1.25em` 控制（46px 字号对应 57.5px，54px 对应 67.5px）；服务器已同步并重启验证
+- **修正（2026-10-25）**：评论图片区域由居中改为左对齐。单张图片居中时与正文左边缘脱节，观感突兀；改后图片从正文左边缘开始排列，多图仍自动换行。服务器已同步并重启验证
 
 AI-assisted: Claude Code (Anthropic)
 
