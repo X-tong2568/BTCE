@@ -23,10 +23,11 @@ class StatusMonitor:
     状态监控器：检测长时间无更新情况
 
     设计语义说明：
-    - 程序启动（包括服务器每日 02:30 重启）视为一次“人工确认”
+    - 只有置顶评论变化（含置顶动态更换）才重置“无更新”计时，新动态不算
     - 超过 NO_UPDATE_ALERT_HOURS 未更新 → 首次告警
     - 若告警后未人工处理 → 按 ALERT_REPEAT_INTERVAL_HOURS 周期重复提醒
-    - 若人工重启 / 修改配置 → 计时重新开始
+    - 整机重启（每日 02:20 自动重启）不算人工确认，计时保持不变
+    - 进程级重启（手动 pm2 restart / 崩溃拉起）视为人工确认，计时重新开始
     """
 
     def __init__(self):
@@ -35,9 +36,7 @@ class StatusMonitor:
         self.monitor_interval = STATUS_MONITOR_INTERVAL
 
         self.status_data = self._load_status()
-
-        # ⭐ 程序启动即视为一次人工确认
-        self._acknowledge_alert(on_startup=True)
+        self._startup_handled = False
 
     # ------------------------------------------------------------------
     # 状态加载 / 保存
@@ -52,6 +51,7 @@ class StatusMonitor:
             "total_changes": 0,
             "start_time": current_time,
             "alert_acknowledged": True,       # 启动即确认
+            "last_boot_id": None,             # 上次运行的整机 boot_id（区分重启类型）
         }
 
         if self.status_file.exists():
@@ -79,6 +79,51 @@ class StatusMonitor:
             logger.error(f"❌ 保存状态文件失败: {e}")
 
     # ------------------------------------------------------------------
+    # 启动识别
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_boot_id():
+        """读取内核 boot_id（区分整机重启和进程重启），读取失败返回 None"""
+        try:
+            return Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
+        except Exception:
+            return None
+
+    def handle_startup(self):
+        """
+        启动时识别重启类型（需在日志初始化后调用，否则 INFO 日志会丢失）
+
+        - boot_id 变化 → 整机重启（每日 02:20 自动重启），不视为人工确认
+        - boot_id 相同 → 进程级重启（手动 pm2 restart / 崩溃拉起），视为人工确认
+        - 无历史 boot_id → 升级后首次运行，只记录不确认（保留已有计时）
+        """
+        if self._startup_handled:
+            return
+        self._startup_handled = True
+
+        current_boot_id = self._get_boot_id()
+        last_boot_id = self.status_data.get("last_boot_id")
+
+        if current_boot_id is None:
+            # 读不到 boot_id（如非 Linux 环境），无法区分，按进程级重启处理
+            self._acknowledge_alert(on_startup=True)
+        elif last_boot_id is None:
+            # 升级后首次运行：只记录 boot_id，不重置计时
+            self.status_data["last_boot_id"] = current_boot_id
+            self._save_status()
+            logger.info("🔁 首次启用重启识别：仅记录 boot_id，不重置计时")
+        elif current_boot_id == last_boot_id:
+            # 同一开机周期内的进程重启 → 手动重启或崩溃拉起，视为人工确认
+            self.status_data["last_boot_id"] = current_boot_id
+            self._acknowledge_alert(on_startup=True)
+        else:
+            # boot_id 变化 → 整机重启，保持原计时和告警状态
+            self.status_data["last_boot_id"] = current_boot_id
+            self._save_status()
+            logger.info("🔁 检测到整机重启：不算人工确认，保持原计时")
+
+    # ------------------------------------------------------------------
     # 状态更新
     # ------------------------------------------------------------------
 
@@ -96,15 +141,16 @@ class StatusMonitor:
     def _acknowledge_alert(self, on_startup=False):
         """
         人工确认告警：
-        - 程序启动
-        - 人工重启
-        - 检测到新变化
+        - 进程级重启（手动重启 / 崩溃拉起）
+        - 检测到置顶评论变化
         """
         self.status_data["alert_acknowledged"] = True
         self.status_data["last_alert_time"] = None
 
         if on_startup:
-            logger.info("🔁 程序启动：视为一次人工确认，告警状态已重置")
+            # 手动重启视为人工确认：28 小时计时重新开始
+            self.status_data["last_change_time"] = time.time()
+            logger.info("🔁 程序启动（进程级重启）：视为一次人工确认，计时重新开始")
 
         self._save_status()
 

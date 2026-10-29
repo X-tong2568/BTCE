@@ -361,7 +361,7 @@ class Monitor:
                 lines.append(f"{QQ_BATCH_TIME_LABEL} {current_time}")
                 await send_qq_message('\n'.join(lines))
 
-            if self.status_monitor: self.status_monitor.record_change()
+            # 新动态不重置"无更新"计时：告警只跟踪置顶评论变化（见 check_dynamic_changes）
         except Exception as e:
             logger.error(f"❌ 批量通知失败: {e}")
 

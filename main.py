@@ -143,6 +143,9 @@ class Application:
         # 设置日志
         setup_logging()
 
+        # 启动识别：区分整机重启/进程重启（需在日志初始化后调用）
+        status_monitor.handle_startup()
+
         # 打印启动信息
         logger.info(f"🚀 启动 {APP_NAME}")
         logger.info(f"📝 日志级别: {LOG_LEVEL} | 日志文件: {LOG_FILE_PATH}")
