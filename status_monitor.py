@@ -27,7 +27,8 @@ class StatusMonitor:
     - 超过 NO_UPDATE_ALERT_HOURS 未更新 → 首次告警
     - 若告警后未人工处理 → 按 ALERT_REPEAT_INTERVAL_HOURS 周期重复提醒
     - 整机重启（每日 02:20 自动重启）不算人工确认，计时保持不变
-    - 进程级重启（手动 pm2 restart / 崩溃拉起）视为人工确认，计时重新开始
+    - 进程级重启（手动 pm2 restart / 崩溃拉起）视为人工确认，但不覆盖真实最后更新时间；
+      确认后 28 小时内不再告警，避免部署重启后立刻收到提醒
     """
 
     def __init__(self):
@@ -52,6 +53,7 @@ class StatusMonitor:
             "start_time": current_time,
             "alert_acknowledged": True,       # 启动即确认
             "last_boot_id": None,             # 上次运行的整机 boot_id（区分重启类型）
+            "last_ack_time": None,            # 上次进程级重启的人工确认时间
         }
 
         if self.status_file.exists():
@@ -145,12 +147,14 @@ class StatusMonitor:
         - 检测到置顶评论变化
         """
         self.status_data["alert_acknowledged"] = True
-        self.status_data["last_alert_time"] = None
 
         if on_startup:
-            # 手动重启视为人工确认：28 小时计时重新开始
-            self.status_data["last_change_time"] = time.time()
-            logger.info("🔁 程序启动（进程级重启）：视为一次人工确认，计时重新开始")
+            # 手动重启只记录人工确认时间，不覆盖真实置顶更新时间
+            self.status_data["last_ack_time"] = time.time()
+            logger.info("🔁 程序启动（进程级重启）：记录人工确认时间，保留最后更新时间")
+        else:
+            # 检测到真实变化时，告警已被解除
+            self.status_data["last_alert_time"] = None
 
         self._save_status()
 
@@ -171,6 +175,13 @@ class StatusMonitor:
         # 未超过阈值，不可能告警
         if hours_without_update < self.no_update_alert_hours:
             return False
+
+        # 进程级重启视为人工确认：确认后一个阈值周期内不再告警
+        last_ack_time = self.status_data.get("last_ack_time")
+        if last_ack_time is not None:
+            hours_since_ack = (current_time - last_ack_time) / 3600
+            if hours_since_ack < self.no_update_alert_hours:
+                return False
 
         # 已人工确认过，但尚未达到再次确认的条件
         if acknowledged:
