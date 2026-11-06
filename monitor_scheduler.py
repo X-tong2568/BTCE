@@ -147,6 +147,35 @@ class LiveMonitorScheduler:
                 else:
                     self.logger.warning("⚠️ 无Cookie，跳过B站直播动态发布")
 
+            # ── GitHub 归档（异步，失败不影响推送）──
+            try:
+                from archive_utils import archive_event, make_event_key
+                change_type = live_info.get("change_type", "live_start")
+                bili_archived = bool(
+                    LIVE_BILI_PUBLISH_ENABLED
+                    and (
+                        change_type == "title_change"
+                        or (change_type == "live_start" and live_info.get("title_changed"))
+                    )
+                )
+                event_time = time.strftime("%Y-%m-%d %H:%M:%S")
+                archive_event(
+                    event_type=change_type,
+                    image_urls=[live_info.get("cover", "")] if live_info.get("cover") else [],
+                    source_url=f"https://live.bilibili.com/{live_info.get('room_id', '')}",
+                    event_time=event_time,
+                    event_key=make_event_key("live", change_type, event_time),
+                    extra={
+                        "title": live_info.get("title", ""),
+                        "previous_title": live_info.get("previous_title", ""),
+                        "room_id": live_info.get("room_id", ""),
+                        "status_tags": qq_message_generator.build_live_status_tags(live_info) or "",
+                    },
+                    channels=["QQ", "邮件"] + (["B站"] if bili_archived else []),
+                )
+            except Exception as e:
+                self.logger.warning(f"⚠️ 直播通知归档入队失败: {e}")
+
         except Exception as e:
             self.logger.error(f"❌❌❌❌ 发送直播通知异常: {e}")
 

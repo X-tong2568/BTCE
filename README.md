@@ -1,4 +1,4 @@
-# BTCE 4.18 — B站动态/直播监控系统
+# BTCE 4.19 — B站动态/直播监控系统
 
 基于 Python + Playwright 的 Bilibili UP 主动态和直播自动化监控系统，支持多通道实时通知及自动发布动态。
 
@@ -12,6 +12,7 @@
 
 | 版本 | 主要变更 |
 |------|---------|
+| **v4.19** | GitHub 私有仓库通知归档（MD/CSV+索引） |
 | **v4.18** | 无更新告警只统计置顶评论；重启区分整机/进程 |
 | **v4.17** | 卡片字号加大、图片缩至1/3、签名居中、短内容自动放大 |
 | **v4.16** | 置顶评论截图改为固定宽度卡片渲染 |
@@ -42,6 +43,7 @@
 3. **直播监控** — 轮询 B站直播 API，开播/下播/标题变化即时通知；标题更新自动发布B站动态（封面+链接+房间状态标签）
 4. **多通道通知** — 邮件（HTML 格式）+ QQ 群（文字/CQ码图片/卡片截图）+ B站动态话题
 5. **系统运维** — 健康检查、性能监控、日志轮转、浏览器自动重启、P1/P2 告警
+6. **通知归档** — 置顶评论/开播/下播/标题修改/新动态自动归档到 GitHub 私有仓库，按月生成可搜索 MD/CSV；图片内联，README 自动索引
 
 ## 项目结构
 
@@ -57,6 +59,7 @@ BTCE/
 ├── monitor_scheduler.py       # 直播监控调度器
 ├── render_comment.py          # 评论渲染与变化检测
 ├── email_renderer.py          # 邮件 HTML 模板
+├── archive_utils.py           # 通知归档：MD/CSV+图片+GitHub提交（v4.19）
 ├── email_utils.py             # SMTP 邮件发送
 ├── qq_message_generator.py    # QQ 消息生成
 ├── qq_utils.py                # QQ 机器人推送
@@ -67,6 +70,7 @@ BTCE/
 ├── config_custom.example.py   # 个性化文案配置模板（v4.14: config_custom模式）
 ├── config_email.example.py    # 邮箱配置模板
 ├── config_qq.example.py       # QQ配置模板
+├── config_github.example.py   # GitHub 归档配置模板（v4.19）
 ├── health_check.py            # 健康检查
 ├── performance_monitor.py     # 性能监控+P1/P2告警+日报
 ├── status_monitor.py          # 状态监控（无更新时长告警）
@@ -101,6 +105,7 @@ python get_cookies.py
 cp config_email.example.py config_email.py      # SMTP + 收件人
 cp config_qq.example.py config_qq.py            # QQ 群号 + 机器人
 cp config_custom.example.py config_custom.py    # 个性化文案（可选，不填用通用默认）
+cp config_github.example.py config_github.py    # GitHub 通知归档（可选，不填则关闭）
 ```
 编辑配置文件，填入真实信息。
 
@@ -133,6 +138,7 @@ pm2 start main.py --name bili-monitor --interpreter python3
 | 个性化文案 | `config_custom.py` | 覆盖通用默认值（QQ消息/邮件标题等），gitignored |
 | 邮箱 | `config_email.py` | SMTP + 收发人 |
 | QQ 推送 | `config_qq.py` | 机器人 API + 群号 |
+| GitHub 归档 | `config_github.py` | 私有仓库/Token/开关（模板 `config_github.example.py`） |
 | 浏览器参数 | `config.py` `BROWSER_CONFIG` | headless 模式 |
 
 ### 卡片签名
@@ -145,7 +151,7 @@ pm2 start main.py --name bili-monitor --interpreter python3
 
 - Cookie 约 7 天失效，需定期更新
 - v4.14 起置顶动态 API 自动发现，无需手动更新 `PINNED_DYNAMIC_ID`
-- 请勿将 `config_email.py`、`config_qq.py`、`config_custom.py`、`cookies.json` 提交到公开仓库
+- 请勿将 `config_email.py`、`config_qq.py`、`config_custom.py`、`config_github.py`、`cookies.json` 提交到公开仓库
 
 ## 免责声明
 

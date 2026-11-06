@@ -1,5 +1,6 @@
 # bili_api.py
 """B站 API 轻量客户端——调用 polymer web-dynamic 新版接口拿动态列表，仅需 Cookie 即可"""
+import html
 import json
 import asyncio
 from pathlib import Path
@@ -16,6 +17,35 @@ FEED_SPACE_URL = (
     "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
     "?host_mid={uid}"
 )
+
+
+def _escape_html(text: str) -> str:
+    """HTML 转义（文本节点用）"""
+    return html.escape(text or "", quote=False)
+
+
+def _build_content_html(desc: dict, fallback_text: str) -> str:
+    """把动态富文本节点转成 HTML：B站表情还原成内联图片，归档后可直接显示"""
+    nodes = desc.get("rich_text_nodes") or []
+    if not nodes:
+        return _escape_html(fallback_text).replace("\n", "<br>")
+
+    parts = []
+    for node in nodes:
+        node_type = node.get("type", "")
+        text = node.get("text", "") or ""
+        if node_type == "RICH_TEXT_NODE_TYPE_EMOJI":
+            emoji = node.get("emoji") or {}
+            icon = emoji.get("icon_url") or emoji.get("webp_url") or ""
+            name = (emoji.get("text") or text).strip().strip("[]")
+            if icon:
+                parts.append(
+                    f'<img class="emoji" alt="[{html.escape(name, quote=True)}]" '
+                    f'src="{html.escape(icon, quote=True)}">'
+                )
+                continue
+        parts.append(_escape_html(text).replace("\n", "<br>"))
+    return "".join(parts)
 
 
 class BiliAPI:
@@ -88,8 +118,9 @@ class BiliAPI:
             mod_dyn = modules.get("module_dynamic", {})
 
             # desc 可能为 None（纯图动态）
-            desc = mod_dyn.get("desc")
-            content = (desc.get("text", "") if desc else "")
+            desc = mod_dyn.get("desc") or {}
+            content = desc.get("text", "") or ""
+            content_html = _build_content_html(desc, content)
 
             # 提取图片列表（漫画/动态图片）
             major = mod_dyn.get("major") or {}
@@ -108,6 +139,7 @@ class BiliAPI:
                 "dynamic_id": dyn_id,
                 "type": dyn_type,
                 "content": content.strip(),
+                "content_html": content_html.strip(),
                 "images": images,
                 "timestamp": 0,
                 "module_tag": (modules.get("module_tag") or {}).get("text", ""),

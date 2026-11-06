@@ -5,3 +5,4 @@ psutil>=5.9.0
 requests>=2.31.0          # 同步HTTP请求
 lxml>=4.9.0               # 更快的HTML解析
 pytest>=7.4.0             # 测试框架
+Pillow>=9.0.0,<12.0.0     # 归档图片转 WebP（兼容服务器 Python 3.9）

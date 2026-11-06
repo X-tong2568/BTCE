@@ -200,6 +200,9 @@ class LiveMonitor:
         title_changed = bool(
             old.get("title") != current.get("title") and current.get("title")
         )
+        # 归档需要记录原标题（开播同轮改标题时也要带上）
+        if title_changed:
+            current["previous_title"] = old.get("title", "")
 
         if old["live_status"] != current["live_status"]:
             change_type = "live_start" if current["live_status"] == 1 else "live_end"

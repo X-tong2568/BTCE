@@ -348,7 +348,7 @@ class Monitor:
                 await send_qq_message(msg, {
                     "up_name": up_name,
                     "dynamic_id": dyn['dynamic_id'],
-                    "current_html": dyn.get("content", ""),
+                    "current_html": dyn.get("content_html") or dyn.get("content", ""),
                     "current_time": current_time,
                     "current_images": dyn.get("images", []),
                     "degraded_type": "new_dynamic",
@@ -360,6 +360,24 @@ class Monitor:
                     lines.append(f"{QQ_BATCH_LINK_LABEL} https://t.bilibili.com/{d['dynamic_id']}")
                 lines.append(f"{QQ_BATCH_TIME_LABEL} {current_time}")
                 await send_qq_message('\n'.join(lines))
+
+            # ── GitHub 归档（异步，失败不影响推送）──
+            try:
+                from archive_utils import archive_event, make_event_key
+                for dyn in new_dynamics:
+                    archive_event(
+                        event_type="new_dynamic",
+                        content_html=dyn.get("content_html") or dyn.get("content", ""),
+                        image_urls=dyn.get("images", []),
+                        screenshot_path=dyn.get("screenshot_path"),
+                        source_url=dyn.get("url") or f"https://t.bilibili.com/{dyn['dynamic_id']}",
+                        event_time=current_time,
+                        event_key=make_event_key("new_dynamic", dyn["dynamic_id"]),
+                        extra={"dynamic_id": dyn["dynamic_id"]},
+                        channels=["QQ", "邮件"],
+                    )
+            except Exception as e:
+                logger.warning(f"⚠️ 新动态归档入队失败: {e}")
 
             # 新动态不重置"无更新"计时：告警只跟踪置顶评论变化（见 check_dynamic_changes）
         except Exception as e:
@@ -481,11 +499,17 @@ class Monitor:
             ct = time.strftime("%Y-%m-%d %H:%M:%S")
             screenshot_path = None
 
-            # screenshot 模式统一先生成卡片；任一通道需要图片就生成一次
+            # screenshot 模式统一先生成卡片；任一通道/归档需要图片就生成一次
+            try:
+                from archive_utils import is_archive_enabled
+                archive_needs_image = is_archive_enabled()
+            except Exception:
+                archive_needs_image = False
             need_image = (
                 QQ_MODE == "screenshot"
                 or EMAIL_MODE == "screenshot"
                 or (AUTO_PUBLISH_ENABLED and BILI_MODE == "screenshot")
+                or archive_needs_image
             )
             if need_image:
                 try:
@@ -552,6 +576,25 @@ class Monitor:
                                                      comment_text=comment_plain)
                     )
                     logger.info("📤 自动发布动态已提交")
+
+            # ── 4) GitHub 归档（异步，失败不影响推送）──
+            try:
+                from archive_utils import archive_event, make_event_key
+                archive_event(
+                    event_type="pinned_comment",
+                    content_html=cur_html,
+                    image_urls=cur_img,
+                    screenshot_path=screenshot_path,
+                    source_url=f"https://t.bilibili.com/{dynamic_id}",
+                    event_time=ct,
+                    event_key=make_event_key("pinned_comment", dynamic_id, rpid or "", cur_html),
+                    extra={"dynamic_id": dynamic_id, "rpid": rpid or ""},
+                    channels=["QQ", "邮件"] + (
+                        ["B站"] if AUTO_PUBLISH_ENABLED and BILI_MODE == "screenshot" else []
+                    ),
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ 置顶评论归档入队失败: {e}")
         except Exception as e:
             logger.error(f"❌ 通知失败: {e}")
 
@@ -603,7 +646,14 @@ class Monitor:
                                 skipped_count += 1
                                 continue
                             if not is_cold:
-                                new_dynamics.append({"dynamic_id": dyn_id, "url": f"https://t.bilibili.com/{dyn_id}"})
+                                new_dynamics.append({
+                                    "dynamic_id": dyn_id,
+                                    "url": f"https://t.bilibili.com/{dyn_id}",
+                                    "type": dyn_type,
+                                    "content": d.get("content", ""),
+                                    "content_html": d.get("content_html", ""),
+                                    "images": d.get("images", []),
+                                })
                     if skipped_count:
                         logger.info(f"⏭️ 跳过 {skipped_count} 条自动生成动态（类型: {DYNAMIC_SKIP_TYPES}）")
                     if new_dynamics:

@@ -30,3 +30,4 @@ manual_publish.py
 pinned_dynamic_state.json
 live_state.json
 config_custom.py
+config_github.py
