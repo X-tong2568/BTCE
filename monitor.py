@@ -341,9 +341,20 @@ class Monitor:
             # QQ推送（走统一的消息生成器）
             if len(new_dynamics) == 1:
                 dyn = new_dynamics[0]
-                msg = self.comment_renderer.generate_new_dynamic_qq_message(
-                    up_name, dyn['dynamic_id'], f"https://t.bilibili.com/{dyn['dynamic_id']}",
-                    current_time, dyn.get("content", ""), dyn.get("screenshot_path", ""))
+                url = f"https://t.bilibili.com/{dyn['dynamic_id']}"
+                shot = dyn.get("screenshot_path") or ""
+                try:
+                    shot_ok = bool(shot) and Path(shot).is_file() and Path(shot).stat().st_size > 0
+                except OSError:
+                    shot_ok = False
+                if shot_ok:
+                    # 新动态单条：只发截图，不附正文
+                    msg = self.comment_renderer.generate_new_dynamic_qq_message(
+                        up_name, dyn['dynamic_id'], url, current_time, "", shot)
+                else:
+                    # 截图失败兜底：沿用统一超时降级文案
+                    msg = self.comment_renderer.qq_generator.generate_new_dynamic_degraded_message(
+                        up_name, dyn['dynamic_id'], current_time)
                 # 传 message_data:原始消息失败后自动补发纯文本降级消息(图片超时消息不丢失)
                 await send_qq_message(msg, {
                     "up_name": up_name,
