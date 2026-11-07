@@ -1292,7 +1292,8 @@ def _sanitize_key(value: str) -> str:
 def _escape_md_text(text: str) -> str:
     """转义会破坏 Markdown 结构的字符"""
     text = text.replace("\\", "\\\\")
-    text = re.sub(r"([`*_\[\]])", r"\\\1", text)
+    # ~ 必须转义，否则 ~~ 会被 GitHub 识别成删除线
+    text = re.sub(r"([`*_\[\]~])", r"\\\1", text)
     text = re.sub(r"(?m)^(\s*)([#>])", r"\1\\\2", text)
     text = re.sub(r"(?m)^(\s*)([-+])(\s)", r"\1\\\2\3", text)
     return text
@@ -1315,8 +1316,8 @@ def _comment_safe(text: str) -> str:
 
 
 def _table_cell(text: str) -> str:
-    """Markdown 表格单元格转义"""
-    return _single_line(text).replace("|", "\\|")
+    """Markdown 表格单元格转义（| 和 ~ 都要转义）"""
+    return _single_line(text).replace("|", "\\|").replace("~", "\\~")
 
 
 def _md_asset(repo_path: str) -> str:
@@ -1350,7 +1351,7 @@ def _make_summary(content_md: str, limit: int = 60) -> str:
     text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", content_md or "")
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
     text = re.sub(r"<[^>]+>", "", text)
-    text = re.sub(r"\\([`*_\[\]])", r"\1", text)
+    text = re.sub(r"\\([`*_\[\]~])", r"\1", text)
     text = _single_line(text)
     return text[:limit] + ("…" if len(text) > limit else "")
 
@@ -1359,7 +1360,7 @@ def _make_plain(content_md: str) -> str:
     """正文转纯文本（CSV 用）"""
     text = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"[图片:\1]", content_md or "")
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
-    text = re.sub(r"\\([`*_\[\]])", r"\1", text)
+    text = re.sub(r"\\([`*_\[\]~])", r"\1", text)
     text = re.sub(r"<[^>]+>", "", text)
     return _single_line(text)
 

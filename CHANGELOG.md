@@ -17,6 +17,7 @@ BTCE 各版本详细变更记录。简表见 [README.md](README.md#版本演进)
 - **配置**：新增 `config_github.example.py` 模板；真实 token/仓库写入 `config_github.py`（gitignored），部署不覆盖
 - **历史回填**：一次性归档 2025-10 ~ 2026-11 共 1450 条（置顶评论 1041、新动态 261、直播 148），0 失败；91 条已删除动态仅有邮件截图
 - **验证**：本地渲染/图片下载/CSV 校验通过；服务器部署后 GitHub 读写、README 索引、服务启动正常
+- **修正（2026-11-07）**：归档 Markdown 正文和表格转义 `~`，避免 `~~` 被 GitHub 识别为删除线；`_make_summary` / `_make_plain` 对应反转义，CSV 保持原文
 
 AI-assisted: Claude Code (Anthropic)
 
