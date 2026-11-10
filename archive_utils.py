@@ -105,9 +105,10 @@ INDEX_START = "<!-- ARCHIVE_INDEX_START -->"
 INDEX_END = "<!-- ARCHIVE_INDEX_END -->"
 
 # README 索引的类型顺序
-# comments 是 EchoWatch 自动维护的互动归档，只有目录级链接，没有月份文件
+# comments 是 EchoWatch 自动维护的互动归档，月份从 comments/README.md 的日期索引汇总
+# 置顶评论自 v4.21 起直接写 ttkj/，不再有独立 pinned/ 月文件
 INDEX_TYPES = [
-    ("pinned", "置顶评论（ttkj 视图）"),
+    ("ttkj", "瞳瞳空间"),
     ("live", "直播"),
     ("dynamics", "新动态"),
     ("comments", "粉丝互动"),
@@ -115,7 +116,7 @@ INDEX_TYPES = [
 
 # 事件类型 -> 归档目录分组
 GROUP_DIRS = {
-    "pinned_comment": "pinned",
+    "pinned_comment": "ttkj",
     "live_start": "live",
     "live_end": "live",
     "title_change": "live",
@@ -124,9 +125,15 @@ GROUP_DIRS = {
 
 # 分组 -> 中文名（用于月度文件标题）
 GROUP_NAMES = {
-    "pinned": "置顶评论",
+    "ttkj": "ttkj汇总",
     "live": "直播",
     "dynamics": "新动态",
+}
+
+# 分组专属 CSV 列（追加在基础列之后）
+# ttkj 同时承载实时置顶评论，需要记录置顶时间和来源
+GROUP_CSV_EXTRA_FIELDS = {
+    "ttkj": ["pinned_at", "source"],
 }
 
 EVENT_TITLES = {
@@ -166,13 +173,13 @@ ARCHIVE_README = """# BTCE 通知归档
 
 ## 目录
 
-- `pinned/`：置顶时间线（正文见 ttkj/）
+- `ttkj/`：瞳瞳空间全量归档（含实时置顶，`pinned_at` 标记置顶时间）
 - `live/`：开播、下播、标题修改
 - `dynamics/`：新动态
 - `comments/`：EchoWatch 粉丝互动归档（由 echowatch-bot 自动维护）
-- `ttkj/`：瞳瞳空间历史全量（正文权威）
 - `interaction/`：其他互动历史扫描
 - `assets/`：图片资源（表情、评论图、封面、截图）
+- `pinned/_thread/`：EchoWatch 置顶评论旁注（由 echowatch-bot 自动维护）
 
 每个月份对应一个 Markdown 文件和一个 CSV 文件：
 
@@ -533,15 +540,21 @@ def _do_archive(job: Dict[str, Any], job_dir: Path, storage: Optional["_BaseStor
     content_plain = _make_plain(content_md or job.get("content_text", ""))
 
     section = _make_section(job, meta_lines, content_md, summary, screenshot_path)
-    new_md = _append_md(existing_md, section, group_name, month)
+    new_md = _append_md(existing_md, section, group_name, month, type_dir)
 
     existing_csv = storage.read_text(csv_path) or ""
-    new_csv = _append_csv(existing_csv, job, summary, content_plain, emojis, collector)
+    new_csv = _append_csv(
+        existing_csv, job, summary, content_plain, emojis, collector, type_dir
+    )
 
     # 新月份第一次归档时，把该月加进 README 索引
+    # 粉丝互动月份从 EchoWatch 维护的 comments/README.md 汇总
     readme_path = "README.md"
     existing_readme = storage.read_text(readme_path) or ARCHIVE_README
-    new_readme = _update_readme_index(existing_readme, type_dir, month)
+    comments_readme = storage.read_text("comments/README.md") or ""
+    new_readme = _update_readme_index(
+        existing_readme, type_dir, month, _extract_comment_months(comments_readme)
+    )
 
     files = {
         md_path: new_md.encode("utf-8"),
@@ -729,7 +742,8 @@ def _make_section(
 # 月度文件追加
 # ======================================================================
 
-def _append_md(existing: str, section: str, group_name: str, month: str) -> str:
+def _append_md(existing: str, section: str, group_name: str, month: str,
+               type_dir: str = "") -> str:
     """把新事件追加到月度 MD，重建顶部索引表"""
     prefix, sections, suffix = _extract_md_blocks(existing)
     sections = (sections.rstrip() + "\n\n" + section.strip() + "\n").strip()
@@ -738,16 +752,22 @@ def _append_md(existing: str, section: str, group_name: str, month: str) -> str:
     for m in _EVENT_HEAD_RE.finditer(sections):
         rows.append((m.group("time").strip(), m.group("title").strip(), m.group("summary").strip()))
 
+    # ttkj 历史文件表头用「类别」，摘要截 40 字；保持追加时不改动旧行
+    is_ttkj = type_dir == "ttkj"
+    column_label = "类别" if is_ttkj else "类型"
+
     last_time = max((r[0] for r in rows), default="")
     header_lines = [
         f"# {group_name}归档 · {month}",
         "",
         f"> 本月共 {len(rows)} 条 · 最后更新 {last_time}",
         "",
-        "| 时间 | 类型 | 摘要 |",
+        f"| 时间 | {column_label} | 摘要 |",
         "| --- | --- | --- |",
     ]
     for row_time, row_title, row_summary in rows:
+        if is_ttkj and len(row_summary) > 40:
+            row_summary = row_summary[:40] + "..."
         header_lines.append(
             f"| {_table_cell(row_time)} | {_table_cell(row_title)} | {_table_cell(row_summary)} |"
         )
@@ -776,8 +796,17 @@ def _extract_md_blocks(existing: str) -> Tuple[str, str, str]:
     return prefix, sections, suffix
 
 
-def _update_readme_index(readme: str, type_dir: str, month: str) -> str:
-    """把 type/month 写进 README 索引；已存在则原样返回"""
+def _extract_comment_months(readme: str) -> List[str]:
+    """从 comments/README.md 的日期索引提取有归档的月份"""
+    months = set()
+    for match in re.finditer(r"- \[(\d{4})-(\d{2})-\d{2}\]\(\1/\2/", readme or ""):
+        months.add(f"{match.group(1)}-{match.group(2)}")
+    return sorted(months, reverse=True)
+
+
+def _update_readme_index(readme: str, type_dir: str, month: str,
+                         comment_months: Optional[List[str]] = None) -> str:
+    """把 type/month 写进 README 索引；粉丝互动按月读取 EchoWatch 的日期索引"""
     if not readme:
         readme = ARCHIVE_README
 
@@ -794,13 +823,11 @@ def _update_readme_index(readme: str, type_dir: str, month: str) -> str:
         end = readme.find(INDEX_END)
 
     block = readme[start + len(INDEX_START):end]
-    if type_dir != "comments" and f"]({type_dir}/{month}.md)" in block:
-        return readme
 
     # 解析已有条目
     entries = {name: set() for name, _ in INDEX_TYPES}
     for match in re.finditer(
-        r"- \[(\d{4}-\d{2})\]\((pinned|live|dynamics)/\1\.md\)", block
+        r"- \[(\d{4}-\d{2})\]\((ttkj|live|dynamics)/\1\.md\)", block
     ):
         entries.setdefault(match.group(2), set()).add(match.group(1))
     if type_dir != "comments":
@@ -811,7 +838,11 @@ def _update_readme_index(readme: str, type_dir: str, month: str) -> str:
     for name, label in INDEX_TYPES:
         lines.append(f"### {label}")
         if name == "comments":
-            # EchoWatch 自己维护 comments/README.md，BTCE 只放目录入口
+            # 月份从 EchoWatch 的日期索引汇总，自动归档的新互动也会出现；
+            # 目录入口放最后，EchoWatch flush 时也会即时刷新这一段
+            for item in comment_months or []:
+                yyyy, mm = item.split("-")
+                lines.append(f"- [{item}](comments/{yyyy}/{mm}/)")
             lines.append("- [EchoWatch 互动归档](comments/README.md)")
             lines.append("")
             continue
@@ -827,6 +858,11 @@ def _update_readme_index(readme: str, type_dir: str, month: str) -> str:
     return readme[:start + len(INDEX_START)] + new_block + readme[end:]
 
 
+def _csv_fields_for(type_dir: str) -> List[str]:
+    """返回分组的 CSV 列：基础列 + 分组专属列"""
+    return CSV_FIELDS + GROUP_CSV_EXTRA_FIELDS.get(type_dir, [])
+
+
 def _append_csv(
     existing: str,
     job: Dict[str, Any],
@@ -834,6 +870,7 @@ def _append_csv(
     content_plain: str,
     emojis: List[str],
     collector: "_AssetCollector",
+    type_dir: str,
 ) -> str:
     """把新事件追加到月度 CSV（UTF-8 BOM，方便 Excel 打开）"""
     existing = existing.lstrip("\ufeff")
@@ -865,13 +902,20 @@ def _append_csv(
         "channels": " / ".join(job.get("channels", [])),
         "extra_json": json.dumps(extra, ensure_ascii=False),
     }
+    fields = _csv_fields_for(type_dir)
+    if "pinned_at" in fields:
+        # \u7f6e\u9876\u4e8b\u4ef6\u8bb0\u5f55\u5b9e\u9645\u53d1\u73b0\u65f6\u95f4\uff1bttkj \u5168\u91cf\u626b\u63cf\u884c\u7531\u5386\u53f2\u5bfc\u51fa\u811a\u672c\u7ef4\u62a4
+        row["pinned_at"] = (
+            job["backup_time"] if job["event_type"] == "pinned_comment" else ""
+        )
+        row["source"] = "btce"
     rows.append(row)
 
     out = io.StringIO()
-    writer = csv.DictWriter(out, fieldnames=CSV_FIELDS, extrasaction="ignore")
+    writer = csv.DictWriter(out, fieldnames=fields, extrasaction="ignore")
     writer.writeheader()
     for r in rows:
-        writer.writerow({k: r.get(k, "") for k in CSV_FIELDS})
+        writer.writerow({k: r.get(k, "") for k in fields})
     return "\ufeff" + out.getvalue()
 
 

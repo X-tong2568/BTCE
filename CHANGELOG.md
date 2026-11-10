@@ -2,6 +2,29 @@
 
 BTCE 各版本详细变更记录。简表见 [README.md](README.md#版本演进)。
 
+## v4.21 — 置顶评论物理并入 ttkj 归档 (2026-11)
+
+- **归档路由**：`GROUP_DIRS["pinned_comment"]` 从 `pinned/` 改为 `ttkj/`，新置顶事件直接写
+  `ttkj/YYYY-MM.md` + `.csv`；置顶评论不再有独立的 monthly 文件
+- **CSV 字段**：`ttkj/` 增加 `pinned_at`、`source` 两列
+  - 实时置顶 `source=btce`，历史扫描 `source=scan`，两者重叠 `source=scan+pinned`
+  - `pinned_at` 记录实际检测到置顶的时间，与评论 ctime 区分
+- **粉丝互动索引**：根 README 的「粉丝互动」不再只有目录入口，按月汇总 EchoWatch
+  `comments/README.md` 的日期索引；EchoWatch 自动归档的新互动也会出现在该栏
+- **数据迁移（B 阶段）**：
+  - 1,010 条 pinned 事件按 rpid 合并进 `ttkj/`：991 个 ttkj 行标记 `scan+pinned`，
+    1,008 条事件时间线存入 `extra_json.pinned_events`（含时间、渠道、截图）
+  - 2 条 pinned 独有条目补入 `ttkj/2026-06.md`、`ttkj/2026-07.md`（`source=pinned`）
+  - 5 条正文差异快照保留为 `extra_json.pinned_snapshot_content`
+  - `pinned/*.md`、`pinned/*.csv` 删除；`pinned/_thread/` 保留给 EchoWatch 旁注
+  - 根 README 索引分类改名「瞳瞳空间」，月份覆盖 2022-06 至最新
+- **历史扫描脚本**：`tem/tongtong_scan/export_github_scan.py` 增加 `pinned_at/source` 列；
+  重扫时保留实时置顶条目和置顶元信息，避免覆盖 BTCE 实时写入的数据
+- **验证**：迁移前后 ttkj 基础列零差异、仅新增 2 行；预览存储验证新置顶写 ttkj、
+  新月份建文件、README 索引更新；重扫保留逻辑测试通过
+
+AI-assisted: Claude Code (Anthropic)
+
 ## v4.20 — 置顶游标供 EchoWatch 联合归档 (2026-11)
 
 - **新增 `write_pinned_cursor()`**（`pinned_dynamic_monitor.py`）：自动发现置顶、QQ 群手动切 ID、
