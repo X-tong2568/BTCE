@@ -107,7 +107,7 @@ INDEX_END = "<!-- ARCHIVE_INDEX_END -->"
 # README 索引的类型顺序
 # comments 是 EchoWatch 自动维护的互动归档，只有目录级链接，没有月份文件
 INDEX_TYPES = [
-    ("pinned", "置顶评论"),
+    ("pinned", "置顶评论（ttkj 视图）"),
     ("live", "直播"),
     ("dynamics", "新动态"),
     ("comments", "粉丝互动"),
@@ -166,10 +166,12 @@ ARCHIVE_README = """# BTCE 通知归档
 
 ## 目录
 
-- `pinned/`：置顶评论
+- `pinned/`：置顶时间线（正文见 ttkj/）
 - `live/`：开播、下播、标题修改
 - `dynamics/`：新动态
 - `comments/`：EchoWatch 粉丝互动归档（由 echowatch-bot 自动维护）
+- `ttkj/`：瞳瞳空间历史全量（正文权威）
+- `interaction/`：其他互动历史扫描
 - `assets/`：图片资源（表情、评论图、封面、截图）
 
 每个月份对应一个 Markdown 文件和一个 CSV 文件：
