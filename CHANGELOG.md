@@ -12,8 +12,9 @@ BTCE 各版本详细变更记录。简表见 [README.md](README.md#版本演进)
 - **署名分离**：`_GithubStorage.commit()` 固定 `author/committer = btce-bot`，
   EchoWatch 侧使用 `echowatch-bot`，同一私有仓可按作者区分
 - **只读接口**：`archive_utils.read_archive_text()` 供游标首次加载；读失败按空游标处理
-- **置顶 rpid 回填**：pinned 归档 1016 条中 1008 条补上 rpid，删除 6 条测试动态；
-  剩余 2 条疑似已删除评论保留空白
+- **置顶 rpid 回填**：pinned 归档 1016 条中 1009 条补上 rpid，删除 6 条测试动态；
+  剩余 1 条疑似已删除评论保留空白
+- **归档索引**：新增「粉丝互动」分类，指向 `comments/README.md`（EchoWatch 互动归档入口）
 - **验证**：DRY_RUN 预览下自动切换/手动切换/拿到 rpid/内容不变四条路径通过
 - 注：EchoWatch v2.5 读取该游标，把 `rpid == pinned_rpid` 的正文只写 `pinned/_thread/`
 

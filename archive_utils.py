@@ -105,10 +105,12 @@ INDEX_START = "<!-- ARCHIVE_INDEX_START -->"
 INDEX_END = "<!-- ARCHIVE_INDEX_END -->"
 
 # README 索引的类型顺序
+# comments 是 EchoWatch 自动维护的互动归档，只有目录级链接，没有月份文件
 INDEX_TYPES = [
     ("pinned", "置顶评论"),
     ("live", "直播"),
     ("dynamics", "新动态"),
+    ("comments", "粉丝互动"),
 ]
 
 # 事件类型 -> 归档目录分组
@@ -167,6 +169,7 @@ ARCHIVE_README = """# BTCE 通知归档
 - `pinned/`：置顶评论
 - `live/`：开播、下播、标题修改
 - `dynamics/`：新动态
+- `comments/`：EchoWatch 粉丝互动归档（由 echowatch-bot 自动维护）
 - `assets/`：图片资源（表情、评论图、封面、截图）
 
 每个月份对应一个 Markdown 文件和一个 CSV 文件：
@@ -789,7 +792,7 @@ def _update_readme_index(readme: str, type_dir: str, month: str) -> str:
         end = readme.find(INDEX_END)
 
     block = readme[start + len(INDEX_START):end]
-    if f"]({type_dir}/{month}.md)" in block:
+    if type_dir != "comments" and f"]({type_dir}/{month}.md)" in block:
         return readme
 
     # 解析已有条目
@@ -798,13 +801,19 @@ def _update_readme_index(readme: str, type_dir: str, month: str) -> str:
         r"- \[(\d{4}-\d{2})\]\((pinned|live|dynamics)/\1\.md\)", block
     ):
         entries.setdefault(match.group(2), set()).add(match.group(1))
-    entries.setdefault(type_dir, set()).add(month)
+    if type_dir != "comments":
+        entries.setdefault(type_dir, set()).add(month)
 
     # 重建索引块（月份倒序）
     lines = []
     for name, label in INDEX_TYPES:
-        months = sorted(entries.get(name, set()), reverse=True)
         lines.append(f"### {label}")
+        if name == "comments":
+            # EchoWatch 自己维护 comments/README.md，BTCE 只放目录入口
+            lines.append("- [EchoWatch 互动归档](comments/README.md)")
+            lines.append("")
+            continue
+        months = sorted(entries.get(name, set()), reverse=True)
         if months:
             for item in months:
                 lines.append(f"- [{item}]({name}/{item}.md) · [CSV]({name}/{item}.csv)")
