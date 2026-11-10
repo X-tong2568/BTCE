@@ -1,6 +1,7 @@
 # monitor.py
 import asyncio
 import json
+import threading
 import time
 import os
 import re
@@ -29,7 +30,10 @@ from performance_monitor import performance_monitor
 from qq_utils import send_qq_message
 from config_qq import QQ_GROUP_IDS
 from bili_api import BiliAPI
-from pinned_dynamic_monitor import check_pinned_dynamic, set_mode_manual, set_mode_auto, get_mode
+from pinned_dynamic_monitor import (
+    check_pinned_dynamic, set_mode_manual, set_mode_auto, get_mode,
+    write_pinned_cursor,
+)
 from color_config import ColorConfig
 from pinned_card_renderer import generate_pinned_card
 import auto_publish
@@ -102,6 +106,12 @@ class Monitor:
         self.api_pinned_id = new_id  # 同步更新API置顶ID，状态消息"B站置顶"行能立即显示新值
         self.history_data["last_pinned_dynamic_id"] = None
         set_mode_manual(new_id)  # 切手动+记录新ID，API不会自动切回
+        # 手动切换也要更新联合归档游标；放线程里，避免 GitHub 慢请求卡住回调
+        threading.Thread(
+            target=write_pinned_cursor,
+            args=(new_id, None, "manual_change"),
+            daemon=True,
+        ).start()
         logger.info(f"🔄 置顶动态ID已更换为 {new_id} (已切换为手动模式)")
 
     def _is_new_format(self, data):
@@ -413,7 +423,23 @@ class Monitor:
                 return False
             if not current_html or "未找到置顶评论" in current_html:
                 logger.warning(f"⚠️ 无置顶评论 {dynamic_id}")
+                # 首次部署或置顶评论被取消：游标至少要有动态 ID，rpid 显式清空
+                try:
+                    await asyncio.to_thread(
+                        write_pinned_cursor, str(dynamic_id), "", "no_pinned_comment"
+                    )
+                except Exception as e:
+                    logger.debug(f"置顶游标写入失败（不影响推送）: {e}")
                 return False
+
+            # 抓到 rpid 后补写联合归档游标；无变化时函数内部直接返回
+            if rpid:
+                try:
+                    await asyncio.to_thread(
+                        write_pinned_cursor, str(dynamic_id), str(rpid), "rpid_detected"
+                    )
+                except Exception as e:
+                    logger.debug(f"置顶游标写入失败（不影响推送）: {e}")
 
             pc = self.history_data.get("pinned_comments", {})
             last_html = ""; last_images = []

@@ -2,6 +2,23 @@
 
 BTCE 各版本详细变更记录。简表见 [README.md](README.md#版本演进)。
 
+## v4.20 — 置顶游标供 EchoWatch 联合归档 (2026-11)
+
+- **新增 `write_pinned_cursor()`**（`pinned_dynamic_monitor.py`）：自动发现置顶、QQ 群手动切 ID、
+  `check_dynamic_changes()` 抓到 rpid 三处原子写归档仓 `_state/pinned_cursor.json`
+- **MD5 守卫**：只比较 `pinned_dynamic_id / pinned_rpid / since / prev_*` 等语义字段；
+  内容不变不写，6 秒主循环不会刷盘/刷 commit
+- **独立 commit**：走 `archive_utils.write_archive_text()`，失败只记 warning，不影响推送主链路
+- **署名分离**：`_GithubStorage.commit()` 固定 `author/committer = btce-bot`，
+  EchoWatch 侧使用 `echowatch-bot`，同一私有仓可按作者区分
+- **只读接口**：`archive_utils.read_archive_text()` 供游标首次加载；读失败按空游标处理
+- **置顶 rpid 回填**：pinned 归档 1016 条中 1008 条补上 rpid，删除 6 条测试动态；
+  剩余 2 条疑似已删除评论保留空白
+- **验证**：DRY_RUN 预览下自动切换/手动切换/拿到 rpid/内容不变四条路径通过
+- 注：EchoWatch v2.5 读取该游标，把 `rpid == pinned_rpid` 的正文只写 `pinned/_thread/`
+
+AI-assisted: Claude Code (Anthropic)
+
 ## v4.19 — GitHub 通知归档 (2026-11)
 
 - **新增 `archive_utils.py`**：把通知内容整理成可搜索的 Markdown + CSV，连同图片提交到 GitHub 私有仓库

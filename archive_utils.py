@@ -74,6 +74,14 @@ GITHUB_ARCHIVE_DRY_RUN = bool(getattr(_cfg, "GITHUB_ARCHIVE_DRY_RUN", False))
 GITHUB_ARCHIVE_IMAGE_MAX_SIZE = int(getattr(_cfg, "GITHUB_ARCHIVE_IMAGE_MAX_SIZE", 1280))
 GITHUB_ARCHIVE_WEBP_QUALITY = int(getattr(_cfg, "GITHUB_ARCHIVE_WEBP_QUALITY", 80))
 
+# 提交署名：BTCE 与 EchoWatch 共用归档仓时必须能按作者区分
+GITHUB_ARCHIVE_AUTHOR_NAME = str(getattr(
+    _cfg, "GITHUB_ARCHIVE_AUTHOR_NAME", "btce-bot"
+))
+GITHUB_ARCHIVE_AUTHOR_EMAIL = str(getattr(
+    _cfg, "GITHUB_ARCHIVE_AUTHOR_EMAIL", "btce-bot@users.noreply.github.com"
+))
+
 
 # ===== 路径与常量 =====
 _BASE_DIR = Path(__file__).parent
@@ -272,6 +280,29 @@ def archive_event(
 def is_archive_enabled() -> bool:
     """供通知侧判断：归档启用时需要卡片截图"""
     return _is_active()
+
+
+def read_archive_text(rel_path: str) -> Optional[str]:
+    """读取归档仓里的文本文件（供 pinned_cursor 等状态文件使用）"""
+    if not _is_active():
+        return None
+    try:
+        return _get_storage().read_text(rel_path)
+    except Exception as e:
+        _log.warning(f"读取归档文件失败 {rel_path}: {e}")
+        return None
+
+
+def write_archive_text(rel_path: str, content: str, message: str) -> bool:
+    """写归档仓里的单个文本文件（独立 commit，失败返回 False 不抛异常）"""
+    if not _is_active():
+        return False
+    try:
+        _get_storage().commit({rel_path: content.encode("utf-8")}, message)
+        return True
+    except Exception as e:
+        _log.warning(f"写入归档文件失败 {rel_path}: {e}")
+        return False
 
 
 def _is_active() -> bool:
@@ -1198,6 +1229,15 @@ class _GithubStorage(_BaseStorage):
                 commit_payload: Dict[str, Any] = {
                     "message": message,
                     "tree": tree["sha"],
+                    # 固定署名，避免归档仓被 token 持有者身份混写
+                    "author": {
+                        "name": GITHUB_ARCHIVE_AUTHOR_NAME,
+                        "email": GITHUB_ARCHIVE_AUTHOR_EMAIL,
+                    },
+                    "committer": {
+                        "name": GITHUB_ARCHIVE_AUTHOR_NAME,
+                        "email": GITHUB_ARCHIVE_AUTHOR_EMAIL,
+                    },
                 }
                 if parents:
                     commit_payload["parents"] = parents

@@ -25,3 +25,7 @@ GITHUB_ARCHIVE_DRY_RUN = False
 # 图片处理：最长边像素、WebP 质量
 GITHUB_ARCHIVE_IMAGE_MAX_SIZE = 1280
 GITHUB_ARCHIVE_WEBP_QUALITY = 80
+
+# 提交署名（与 EchoWatch 共用归档仓时用于区分作者）
+GITHUB_ARCHIVE_AUTHOR_NAME = "btce-bot"
+GITHUB_ARCHIVE_AUTHOR_EMAIL = "btce-bot@users.noreply.github.com"
