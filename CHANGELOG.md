@@ -2,6 +2,17 @@
 
 BTCE 各版本详细变更记录。简表见 [README.md](README.md#版本演进)。
 
+## v4.22 — 粉丝互动月文件索引 (2026-11)
+
+- **索引格式**：根 README 的「粉丝互动」从 `comments/YYYY/MM/` 目录链接改为
+  `comments/YYYY-MM.md` + CSV 月度文件链接，与 `ttkj/` 的月度索引一致
+- **解析兼容**：`_extract_comment_months()` 改为读取 `comments/README.md` 的月份索引
+  `[YYYY-MM](./YYYY-MM.md)`，不再解析日链接
+- **说明**：EchoWatch 从 v2.7 起按月份写 `comments/YYYY-MM.md/.csv`；
+  历史 451 条已合并进 2026-07 ~ 2026-10 月文件
+
+AI-assisted: Claude Code (Anthropic)
+
 ## v4.21 — 置顶评论物理并入 ttkj 归档 (2026-11)
 
 - **归档路由**：`GROUP_DIRS["pinned_comment"]` 从 `pinned/` 改为 `ttkj/`，新置顶事件直接写

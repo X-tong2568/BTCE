@@ -797,10 +797,10 @@ def _extract_md_blocks(existing: str) -> Tuple[str, str, str]:
 
 
 def _extract_comment_months(readme: str) -> List[str]:
-    """从 comments/README.md 的日期索引提取有归档的月份"""
+    """从 comments/README.md 的月份索引提取有归档的月份"""
     months = set()
-    for match in re.finditer(r"- \[(\d{4})-(\d{2})-\d{2}\]\(\1/\2/", readme or ""):
-        months.add(f"{match.group(1)}-{match.group(2)}")
+    for match in re.finditer(r"- \[(\d{4}-\d{2})\]\((?:\./)?\1\.md\)", readme or ""):
+        months.add(match.group(1))
     return sorted(months, reverse=True)
 
 
@@ -838,11 +838,12 @@ def _update_readme_index(readme: str, type_dir: str, month: str,
     for name, label in INDEX_TYPES:
         lines.append(f"### {label}")
         if name == "comments":
-            # 月份从 EchoWatch 的日期索引汇总，自动归档的新互动也会出现；
+            # 月份从 EchoWatch 的月份索引汇总，自动归档的新互动也会出现；
             # 目录入口放最后，EchoWatch flush 时也会即时刷新这一段
             for item in comment_months or []:
-                yyyy, mm = item.split("-")
-                lines.append(f"- [{item}](comments/{yyyy}/{mm}/)")
+                lines.append(
+                    f"- [{item}](comments/{item}.md) · [CSV](comments/{item}.csv)"
+                )
             lines.append("- [EchoWatch 互动归档](comments/README.md)")
             lines.append("")
             continue

@@ -1,4 +1,4 @@
-# BTCE 4.21 — B站动态/直播监控系统
+# BTCE 4.22 — B站动态/直播监控系统
 
 基于 Python + Playwright 的 Bilibili UP 主动态和直播自动化监控系统，支持多通道实时通知及自动发布动态。
 
@@ -12,6 +12,7 @@
 
 | 版本 | 主要变更 |
 |------|---------|
+| **v4.22** | 粉丝互动改为月文件索引（comments/YYYY-MM） |
 | **v4.21** | 置顶评论物理并入 ttkj 归档；粉丝互动按月索引 |
 | **v4.20** | 置顶游标供 EchoWatch 联合归档 |
 | **v4.19** | GitHub 私有仓库通知归档（MD/CSV+索引） |
@@ -61,7 +62,7 @@ BTCE/
 ├── monitor_scheduler.py       # 直播监控调度器
 ├── render_comment.py          # 评论渲染与变化检测
 ├── email_renderer.py          # 邮件 HTML 模板
-├── archive_utils.py           # 通知归档：MD/CSV+图片+GitHub提交（v4.21）
+├── archive_utils.py           # 通知归档：MD/CSV+图片+GitHub提交（v4.22）
 ├── email_utils.py             # SMTP 邮件发送
 ├── qq_message_generator.py    # QQ 消息生成
 ├── qq_utils.py                # QQ 机器人推送
