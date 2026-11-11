@@ -1,4 +1,4 @@
-# BTCE 4.22 — B站动态/直播监控系统
+# BTCE 5.0 — B站动态/直播监控系统
 
 基于 Python + Playwright 的 Bilibili UP 主动态和直播自动化监控系统，支持多通道实时通知及自动发布动态。
 
@@ -12,6 +12,7 @@
 
 | 版本 | 主要变更 |
 |------|---------|
+| **v5.0** | QQ 官方 Bot 双通道接入（NapCat 保留） |
 | **v4.22** | 粉丝互动改为月文件索引（comments/YYYY-MM） |
 | **v4.21** | 置顶评论物理并入 ttkj 归档；粉丝互动按月索引 |
 | **v4.20** | 置顶游标供 EchoWatch 联合归档 |
@@ -41,7 +42,7 @@
 
 ## 核心功能
 
-1. **置顶评论监控** — Playwright 打开置顶动态，抓取置顶评论文字+图片，变化时推送邮件/QQ/B站；推送模式三通道可配（screenshot 模式使用固定宽度卡片渲染）；支持 QQ 群 @机器人 实时更换置顶动态ID
+1. **置顶评论监控** — Playwright 打开置顶动态，抓取置顶评论文字+图片，变化时推送邮件/QQ/B站；推送模式三通道可配（screenshot 模式使用固定宽度卡片渲染）；支持 NapCat 与 QQ 官方 Bot 双通道并行（v5.0），支持 QQ 群 @机器人 实时更换置顶动态ID
 2. **新动态检测** — API 定时获取动态列表，差集比对发现新动态，卡片截图 QQ 推送
 3. **直播监控** — 轮询 B站直播 API，开播/下播/标题变化即时通知；标题更新自动发布B站动态（封面+链接+房间状态标签）
 4. **多通道通知** — 邮件（HTML 格式）+ QQ 群（文字/CQ码图片/卡片截图）+ B站动态话题
@@ -72,7 +73,7 @@ BTCE/
 ├── config.py                  # 主配置（末尾 from config_custom import *）
 ├── config_custom.example.py   # 个性化文案配置模板（v4.14: config_custom模式）
 ├── config_email.example.py    # 邮箱配置模板
-├── config_qq.example.py       # QQ配置模板
+├── config_qq.example.py       # QQ/NapCat + 官方 Bot 配置模板（v5.0）
 ├── config_github.example.py   # GitHub 归档配置模板（v4.19）
 ├── health_check.py            # 健康检查
 ├── performance_monitor.py     # 性能监控+P1/P2告警+日报
@@ -140,9 +141,13 @@ pm2 start main.py --name bili-monitor --interpreter python3
 | 卡片渲染 | `config.py` `CARD_*` | 宽度/常规字号/短内容字号/评论图宽度/签名路径；签名可在 config_custom.py 覆盖 |
 | 个性化文案 | `config_custom.py` | 覆盖通用默认值（QQ消息/邮件标题等），gitignored |
 | 邮箱 | `config_email.py` | SMTP + 收发人 |
-| QQ 推送 | `config_qq.py` | 机器人 API + 群号 |
+| QQ 推送 | `config_qq.py` | NapCat 机器人 API + 群号 |
+| 官方 Bot | `config_qq.py` | 双通道开关、`QQ_OFFICIAL_GROUPS`、管理员 openid、qbot 地址（v5.0） |
 | GitHub 归档 | `config_github.py` | 私有仓库/Token/开关（模板 `config_github.example.py`） |
 | 浏览器参数 | `config.py` `BROWSER_CONFIG` | headless 模式 |
+
+> v5.0 的 QQ 官方 Bot 通道需要同机常驻 qbot（独立项目 `ttkj-bot`，监听 `127.0.0.1:8089`）。
+> 不启用时保持 `QQ_OFFICIAL_ENABLED = False`，NapCat 行为完全不变；启用步骤见 `开发者指南-仿站必读.md` 第 6.7~6.12 节。
 
 ### 卡片签名
 

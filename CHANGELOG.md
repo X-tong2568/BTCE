@@ -2,6 +2,34 @@
 
 BTCE 各版本详细变更记录。简表见 [README.md](README.md#版本演进)。
 
+## v5.0 — QQ 官方 Bot 双通道接入 (2026-11)
+
+- **双通道**：新增 `QQ_NAPCAT_ENABLED` / `QQ_OFFICIAL_ENABLED` 独立开关；NapCat 群列表
+  `QQ_GROUP_IDS` 与官方别名列表 `QQ_OFFICIAL_GROUPS` 完全分开维护，官方群不需要 QQ 群号。
+- **官方发送**：`qq_utils.py` 新增 CQ -> parts 转换和官方 HTTP 发送；`send_qq_message`
+  按 NapCat 群 + 官方别名构建 targets，逐目标记录结果；降级只补失败目标；
+  官方通道全部异常兜底并记录日志，不影响 NapCat/邮件/归档。
+- **官方指令**：`qq_callback_server.py` 新增 `/official/callback`；用 qbot 转发的 `group`
+  别名和 `QQ_OFFICIAL_ADMIN_OPENIDS` 校验；支持 测试/状态、更换置顶、切换手动/自动、
+  帮助、更新凭证；回复走 qbot `/official_reply` 被动消息。
+- **官方群管理**：管理群 @NapCat 机器人可用 `官方列表 / 开启官方推送 <别名> /
+  关闭官方推送 <别名>`；官方群管理员在群内也可直接操作（不带别名=当前群）。
+- **加群事件**：qbot 转发 `group_add_robot` 时自动分配 `auto_N` 别名并通知管理群；
+  `group_del_robot` 时自动关闭该群推送并通知管理群。
+- **状态持久化**：启用列表存 `data/official_push_state.json`，首次用
+  `QQ_OFFICIAL_GROUPS` 播种，群内/管理群指令修改后下一次发送立即生效。
+- **更新凭证**：官方渠道首条被动回复“正在生成二维码”，二维码照旧发管理邮箱；
+  后续扫码/保存/重启状态走官方主动消息，避免 5 分钟被动回复窗口限制。
+- **配置模板**：`config_qq.example.py` 增加双通道开关、`QQ_OFFICIAL_GROUPS`、
+  qbot 地址/口令、官方管理员 openid、等待策略、转发口令。
+- **兼容**：NapCat 推送列表、回调路径、降级逻辑保持原样；`pinned_card_renderer.py`、
+  `monitor.py`、`main.py` 零改动。
+- **已知限制**：官方群消息不能文字+图片单条混排，文本/图片拆成多条；官方管理员按
+  `member_openid` 配置，不是 QQ 号；官方通道需 qbot 常驻；官方主动消息受单群
+  20 qpm / 1000 条/日限制。
+
+AI-assisted: Claude Code (Anthropic)
+
 ## v4.22 — 粉丝互动月文件索引 (2026-11)
 
 - **索引格式**：根 README 的「粉丝互动」从 `comments/YYYY/MM/` 目录链接改为
