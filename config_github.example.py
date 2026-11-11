@@ -29,3 +29,8 @@ GITHUB_ARCHIVE_WEBP_QUALITY = 80
 # 提交署名（与 EchoWatch 共用归档仓时用于区分作者）
 GITHUB_ARCHIVE_AUTHOR_NAME = "btce-bot"
 GITHUB_ARCHIVE_AUTHOR_EMAIL = "btce-bot@users.noreply.github.com"
+
+# 共同作者 trailer：自动归档提交附加 Co-authored-by，会计入该账号的贡献图
+# 留空则不追加；格式为 "GitHub用户名 <已验证邮箱>"，例如：
+# GITHUB_ARCHIVE_CO_AUTHOR = "octocat <octocat@users.noreply.github.com>"
+GITHUB_ARCHIVE_CO_AUTHOR = ""

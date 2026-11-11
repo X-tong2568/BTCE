@@ -1,4 +1,4 @@
-# BTCE 5.0 — B站动态/直播监控系统
+# BTCE 5.1 — B站动态/直播监控系统
 
 基于 Python + Playwright 的 Bilibili UP 主动态和直播自动化监控系统，支持多通道实时通知及自动发布动态。
 
@@ -12,6 +12,7 @@
 
 | 版本 | 主要变更 |
 |------|---------|
+| **v5.1** | 归档提交附加共同作者标识 |
 | **v5.0** | QQ 官方 Bot 双通道接入（NapCat 保留） |
 | **v4.22** | 粉丝互动改为月文件索引（comments/YYYY-MM） |
 | **v4.21** | 置顶评论物理并入 ttkj 归档；粉丝互动按月索引 |
@@ -157,7 +158,7 @@ pm2 start main.py --name bili-monitor --interpreter python3
 | 邮箱 | `config_email.py` | SMTP + 收发人 |
 | NapCat 推送 | `config_qq.py` | NapCat 机器人 API + QQ 群号 |
 | 官方 Bot | `config_qq.py` | 双通道开关、`QQ_OFFICIAL_GROUPS`、管理员 member_openid、qbot 地址（v5.0） |
-| GitHub 归档 | `config_github.py` | 私有仓库/Token/开关（模板 `config_github.example.py`） |
+| GitHub 归档 | `config_github.py` | 私有仓库/Token/开关/共同作者 trailer（模板 `config_github.example.py`） |
 | 浏览器参数 | `config.py` `BROWSER_CONFIG` | headless 模式 |
 
 > `QQ_GROUP_IDS` 填 QQ 群号（NapCat）；`QQ_OFFICIAL_GROUPS` 填 qbot 群别名（官方），两个列表独立维护。

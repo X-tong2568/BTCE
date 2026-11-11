@@ -2,6 +2,19 @@
 
 BTCE 各版本详细变更记录。简表见 [README.md](README.md#版本演进)。
 
+## v5.1 — 归档提交共同作者标识 (2026-11)
+
+- **共同作者**：GitHub 归档提交信息末尾自动追加 `Co-authored-by` trailer，
+  让自动归档提交同时计入指定账号的贡献图；未配置时保持原样。
+- **配置**：新增 `GITHUB_ARCHIVE_CO_AUTHOR`（`config_github.py`，gitignored），
+  格式 `用户名 <已验证邮箱>`；`config_github.example.py` 提供占位示例。
+- **覆盖范围**：所有归档提交统一走 `_GithubStorage.commit()` 入口追加，
+  包括新动态、置顶游标、ttkj 汇总和粉丝互动；消息已含 trailer 时不重复追加。
+- **空仓初始化**：README 首次提交同样追加 trailer。
+- **部署**：服务器 `config_github.py` 需单独追加该配置项，代码部署不会覆盖。
+
+AI-assisted: Claude Code (Anthropic)
+
 ## v5.0 — QQ 官方 Bot 双通道接入 (2026-11)
 
 - **双通道**：新增 `QQ_NAPCAT_ENABLED` / `QQ_OFFICIAL_ENABLED` 独立开关；NapCat 群列表

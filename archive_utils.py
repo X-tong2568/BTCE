@@ -82,6 +82,18 @@ GITHUB_ARCHIVE_AUTHOR_EMAIL = str(getattr(
     _cfg, "GITHUB_ARCHIVE_AUTHOR_EMAIL", "btce-bot@users.noreply.github.com"
 ))
 
+# 共同作者 trailer：自动归档提交同时计入该账号的贡献图（留空则不追加）
+GITHUB_ARCHIVE_CO_AUTHOR = str(getattr(
+    _cfg, "GITHUB_ARCHIVE_CO_AUTHOR", ""
+)).strip()
+
+
+def _with_co_author(message: str) -> str:
+    """给提交信息末尾追加 Co-authored-by trailer（未配置或已存在则不重复追加）"""
+    if not GITHUB_ARCHIVE_CO_AUTHOR or "Co-authored-by:" in message:
+        return message
+    return f"{message.rstrip()}\n\nCo-authored-by: {GITHUB_ARCHIVE_CO_AUTHOR}"
+
 
 # ===== 路径与常量 =====
 _BASE_DIR = Path(__file__).parent
@@ -1215,7 +1227,7 @@ class _GithubStorage(_BaseStorage):
             return
 
         payload = {
-            "message": "docs: add archive README",
+            "message": _with_co_author("docs: add archive README"),
             "content": base64.b64encode(ARCHIVE_README.encode("utf-8")).decode("ascii"),
             "branch": self.branch,
         }
@@ -1283,7 +1295,7 @@ class _GithubStorage(_BaseStorage):
                 ).json()
 
                 commit_payload: Dict[str, Any] = {
-                    "message": message,
+                    "message": _with_co_author(message),
                     "tree": tree["sha"],
                     # 固定署名，避免归档仓被 token 持有者身份混写
                     "author": {
