@@ -42,10 +42,10 @@
 
 ## 核心功能
 
-1. **置顶评论监控** — Playwright 打开置顶动态，抓取置顶评论文字+图片，变化时推送邮件/QQ/B站；推送模式三通道可配（screenshot 模式使用固定宽度卡片渲染）；支持 NapCat 与 QQ 官方 Bot 双通道并行（v5.0），支持 QQ 群 @机器人 实时更换置顶动态ID
+1. **置顶评论监控** — Playwright 打开置顶动态，抓取置顶评论文字+图片，变化时推送邮件/QQ/B站；推送模式三通道可配（screenshot 模式使用固定宽度卡片渲染）；支持 NapCat 与 QQ 官方 Bot 双通道并行（v5.0），支持 QQ 群 @机器人 实时更换置顶动态ID（两通道均可）
 2. **新动态检测** — API 定时获取动态列表，差集比对发现新动态，卡片截图 QQ 推送
 3. **直播监控** — 轮询 B站直播 API，开播/下播/标题变化即时通知；标题更新自动发布B站动态（封面+链接+房间状态标签）
-4. **多通道通知** — 邮件（HTML 格式）+ QQ 群（文字/CQ码图片/卡片截图）+ B站动态话题
+4. **多通道通知** — 邮件（HTML 格式）+ QQ 群（NapCat / 官方 Bot 双通道，文字/CQ码图片/卡片截图）+ B站动态话题
 5. **系统运维** — 健康检查、性能监控、日志轮转、浏览器自动重启、P1/P2 告警
 6. **通知归档** — 置顶评论/开播/下播/标题修改/新动态自动归档到 GitHub 私有仓库，按月生成可搜索 MD/CSV；置顶评论直接写入 `ttkj/`，粉丝互动按月汇总；图片内联，README 自动索引
 
@@ -66,8 +66,8 @@ BTCE/
 ├── archive_utils.py           # 通知归档：MD/CSV+图片+GitHub提交（v4.22）
 ├── email_utils.py             # SMTP 邮件发送
 ├── qq_message_generator.py    # QQ 消息生成
-├── qq_utils.py                # QQ 机器人推送
-├── qq_callback_server.py      # QQ回调服务器（v4.14: +切换手动/自动指令）
+├── qq_utils.py                # QQ 消息推送（NapCat + 官方 Bot 双通道，v5.0）
+├── qq_callback_server.py      # QQ 回调服务器（NapCat + 官方 qbot，v5.0）
 ├── cookie_renewer.py          # Cookie远程更新（v4.7）
 ├── color_config.py            # 邮件渐变色配置
 ├── config.py                  # 主配置（末尾 from config_custom import *）
@@ -90,6 +90,8 @@ BTCE/
 └── .gitignore                 # Git 忽略规则
 ```
 
+> QQ 官方 Bot 通道依赖同机独立项目 qbot（`ttkj-bot`），不在本仓库内。
+
 ## 快速开始
 
 ### 1. 环境准备
@@ -107,7 +109,7 @@ python get_cookies.py
 ### 3. 配置
 ```bash
 cp config_email.example.py config_email.py      # SMTP + 收件人
-cp config_qq.example.py config_qq.py            # QQ 群号 + 机器人
+cp config_qq.example.py config_qq.py            # NapCat 群号 + 可选官方 Bot
 cp config_custom.example.py config_custom.py    # 个性化文案（可选，不填用通用默认）
 cp config_github.example.py config_github.py    # GitHub 通知归档（可选，不填则关闭）
 ```
@@ -128,6 +130,18 @@ python main.py
 pm2 start main.py --name bili-monitor --interpreter python3
 ```
 
+### 5. 官方 Bot 通道（可选）
+
+需要同机常驻 qbot（独立项目 `ttkj-bot`，监听 `127.0.0.1:8089`）：
+
+1. 在 qbot 侧配置 `QBOT_ENV=prod`、`QBOT_APP_ID`、`QBOT_APP_SECRET`、`QBOT_BOT_OPENID`；
+2. 配置 `QBOT_CALLBACK_FORWARD_URL = "http://127.0.0.1:15510/official/callback"`；
+3. 在 BTCE 的 `config_qq.py` 设置 `QQ_OFFICIAL_ENABLED = True`、`QQ_OFFICIAL_GROUPS = ["test1"]`（别名，不是 QQ 群号）；
+4. 把管理员 `member_openid` 填入 `QQ_OFFICIAL_ADMIN_OPENIDS`（不是 QQ 号）；
+5. 先启动 qbot，重启 BTCE；在群里 @ 机器人发 `状态` 验证。
+
+不启用时保持 `QQ_OFFICIAL_ENABLED = False`，NapCat 行为完全不变。详细步骤见 `开发者指南-仿站必读.md` 第 6.7~6.12 节。
+
 ## 配置说明
 
 | 配置项 | 位置 | 说明 |
@@ -141,13 +155,12 @@ pm2 start main.py --name bili-monitor --interpreter python3
 | 卡片渲染 | `config.py` `CARD_*` | 宽度/常规字号/短内容字号/评论图宽度/签名路径；签名可在 config_custom.py 覆盖 |
 | 个性化文案 | `config_custom.py` | 覆盖通用默认值（QQ消息/邮件标题等），gitignored |
 | 邮箱 | `config_email.py` | SMTP + 收发人 |
-| QQ 推送 | `config_qq.py` | NapCat 机器人 API + 群号 |
-| 官方 Bot | `config_qq.py` | 双通道开关、`QQ_OFFICIAL_GROUPS`、管理员 openid、qbot 地址（v5.0） |
+| NapCat 推送 | `config_qq.py` | NapCat 机器人 API + QQ 群号 |
+| 官方 Bot | `config_qq.py` | 双通道开关、`QQ_OFFICIAL_GROUPS`、管理员 member_openid、qbot 地址（v5.0） |
 | GitHub 归档 | `config_github.py` | 私有仓库/Token/开关（模板 `config_github.example.py`） |
 | 浏览器参数 | `config.py` `BROWSER_CONFIG` | headless 模式 |
 
-> v5.0 的 QQ 官方 Bot 通道需要同机常驻 qbot（独立项目 `ttkj-bot`，监听 `127.0.0.1:8089`）。
-> 不启用时保持 `QQ_OFFICIAL_ENABLED = False`，NapCat 行为完全不变；启用步骤见 `开发者指南-仿站必读.md` 第 6.7~6.12 节。
+> `QQ_GROUP_IDS` 填 QQ 群号（NapCat）；`QQ_OFFICIAL_GROUPS` 填 qbot 群别名（官方），两个列表独立维护。
 
 ### 卡片签名
 
@@ -159,6 +172,7 @@ pm2 start main.py --name bili-monitor --interpreter python3
 
 - Cookie 约 7 天失效，需定期更新
 - v4.14 起置顶动态 API 自动发现，无需手动更新 `PINNED_DYNAMIC_ID`
+- 官方 Bot 通道依赖 qbot 常驻；`QQ_OFFICIAL_GROUPS` 是 qbot 群别名，`QQ_OFFICIAL_ADMIN_OPENIDS` 是 `member_openid`，都不是 QQ 号
 - 请勿将 `config_email.py`、`config_qq.py`、`config_custom.py`、`config_github.py`、`cookies.json` 提交到公开仓库
 
 ## 免责声明
