@@ -12,6 +12,9 @@ BTCE 各版本详细变更记录。简表见 [README.md](README.md#版本演进)
   包括新动态、置顶游标、ttkj 汇总和粉丝互动；消息已含 trailer 时不重复追加。
 - **空仓初始化**：README 首次提交同样追加 trailer。
 - **部署**：服务器 `config_github.py` 需单独追加该配置项，代码部署不会覆盖。
+- **修正（2026-11-12）**：归档 Worker 改为进程启动时主动拉起并扫描队列。
+  此前 Worker 仅在新归档事件时懒启动，进程若在任务执行中被重启（SIGINT/部署），
+  队列中的任务不会再有线程处理；现在重启后自动补归档，`event-key` 幂等检查防重复。
 
 AI-assisted: Claude Code (Anthropic)
 

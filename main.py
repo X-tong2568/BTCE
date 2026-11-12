@@ -37,6 +37,14 @@ except ImportError as e:
     QQ_CALLBACK_ENABLED = False
     logger.warning(f"⚠️ QQ回调服务器模块不可用: {e}")
 
+# 尝试导入归档模块（进程启动时恢复未完成的归档队列）
+try:
+    from archive_utils import start_archive_worker
+    ARCHIVE_AVAILABLE = True
+except ImportError as e:
+    ARCHIVE_AVAILABLE = False
+    logger.warning(f"⚠️ 归档模块不可用: {e}")
+
 
 class Application:
     """应用程序管理器"""
@@ -165,6 +173,10 @@ class Application:
                 logger.info("✅ 直播监控任务已启动")
             else:
                 logger.info("ℹℹ️ 直播监控模块不可用，跳过启动")
+
+            # 启动归档 Worker：立即扫描队列，补处理上次退出时被打断的归档任务
+            if ARCHIVE_AVAILABLE:
+                start_archive_worker()
 
             # 启动主监控（动态监控）
             self.monitor = Monitor()

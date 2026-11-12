@@ -306,6 +306,13 @@ def is_archive_enabled() -> bool:
     return _is_active()
 
 
+def start_archive_worker() -> None:
+    """供主程序启动时调用：拉起归档线程并扫描积压队列，补处理上次退出时未完成的任务"""
+    if not _is_active():
+        return
+    _ensure_worker()
+
+
 def read_archive_text(rel_path: str) -> Optional[str]:
     """读取归档仓里的文本文件（供 pinned_cursor 等状态文件使用）"""
     if not _is_active():
