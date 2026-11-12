@@ -174,6 +174,7 @@ pm2 start main.py --name bili-monitor --interpreter python3
 - Cookie 约 7 天失效，需定期更新
 - v4.14 起置顶动态 API 自动发现，无需手动更新 `PINNED_DYNAMIC_ID`
 - 官方 Bot 通道依赖 qbot 常驻；`QQ_OFFICIAL_GROUPS` 是 qbot 群别名，`QQ_OFFICIAL_ADMIN_OPENIDS` 是 `member_openid`，都不是 QQ 号
+- NapCat 里的 QQ 大版本会被腾讯强制更新（版本过低会拒绝登录），升级步骤见 `开发者指南-仿站必读.md` 第 10.7 节
 - 请勿将 `config_email.py`、`config_qq.py`、`config_custom.py`、`config_github.py`、`cookies.json` 提交到公开仓库
 
 ## 免责声明
