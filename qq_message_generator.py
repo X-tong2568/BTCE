@@ -14,10 +14,11 @@ class QQMessageGenerator:
         """生成QQ群推送消息（优先用截图，失败兜底文字+表情+评论区图片）"""
         try:
             qq_message = f"【{up_name}】{QQ_PINNED_UPDATE_TEXT}\n"
+            media = ""
 
             if screenshot_path:
-                # 截图模式：只用截图替换文字+表情+评论区图片
-                qq_message += f"[CQ:image,file=file:///{screenshot_path.replace(chr(92), '/')}]\n"
+                # 截图模式：图片放消息末尾（文-文-图），官方通道拆成两条而不是三条
+                media = f"[CQ:image,file=file:///{screenshot_path.replace(chr(92), '/')}]"
             else:
                 # 兜底模式：旧版文字+表情alt+评论区图片
                 soup = BeautifulSoup(current_html, "html.parser")
@@ -31,16 +32,22 @@ class QQMessageGenerator:
                 qq_message += f"{text_content}\n"
 
                 if current_images:
-                    qq_message += "📸 图片：\n"
-                    for i, img_url in enumerate(current_images[:9]):
-                        qq_message += f"[CQ:image,file={img_url}]\n"
+                    # 图片统一放到文字之后（文-文-图）；CQ 码首尾相接，
+                    # 避免官方通道把图片间的换行拆成额外的空文本消息
+                    media_lines = ["📸 图片："]
                     if len(current_images) > 9:
-                        qq_message += f"... 还有 {len(current_images) - 9} 张图片\n"
+                        media_lines.append(f"... 还有 {len(current_images) - 9} 张图片")
+                    image_codes = "".join(
+                        f"[CQ:image,file={img_url}]" for img_url in current_images[:9]
+                    )
+                    media = "\n".join(media_lines) + "\n" + image_codes
 
             qq_message += "----------------\n"
             qq_message += f"检测时间: {current_time}\n"
             qq_message += f"监测动态: https://t.bilibili.com/{dynamic_id}\n"
             qq_message += "----------------"
+            if media:
+                qq_message += f"\n{media}"
 
             return qq_message
 
@@ -111,12 +118,13 @@ class QQMessageGenerator:
                                         screenshot_path: str = None) -> str:
         """生成新动态 QQ 群推送消息（支持截图）"""
         parts = [f"【{up_name}】发布了新动态~"]
-        if screenshot_path:
-            parts.append(f"[CQ:image,file=file:///{screenshot_path.replace(chr(92), '/')}]")
         if content_text:
             parts.append(content_text[:300])
         parts.append(f"{QQ_SINGLE_LINK_LABEL} {dynamic_url}")
         parts.append(f"{QQ_SINGLE_TIME_LABEL} {current_time}")
+        # 图片放最后（文-文-图），官方通道拆成两条而不是三条
+        if screenshot_path:
+            parts.append(f"[CQ:image,file=file:///{screenshot_path.replace(chr(92), '/')}]")
         return '\n'.join(parts)
 
     @staticmethod
@@ -159,10 +167,12 @@ class QQMessageGenerator:
         if status_tags:
             qq_msg += f"{status_tags}\n"
 
-        if cover:
-            qq_msg += f"封面：\n[CQ:image,file={cover}]\n"
-
         qq_msg += "----------------"
+
+        # 封面放最后（文-文-图），官方通道拆成两条而不是三条
+        if cover:
+            qq_msg += f"\n封面：\n[CQ:image,file={cover}]"
+
         return qq_msg
 
 
