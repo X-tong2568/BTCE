@@ -99,6 +99,7 @@ class Monitor:
         self.browser = None
         self.context = None
         self.page = None  # v4.8：持久化页面复用
+        self._timeout_streak = 0  # v5.3：连续超时计数，连续2次则重建浏览器兜底
 
     def update_pinned_dynamic_id(self, new_id: str):
         """运行时动态更换置顶动态ID（供QQ回调指令调用），同时切换为手动模式"""
@@ -137,6 +138,7 @@ class Monitor:
             raise FileNotFoundError("Cookie 文件不存在")
         cookies = json.loads(self.cookie_file.read_text(encoding="utf-8"))
         await self.context.add_cookies(cookies)
+        self._timeout_streak = 0  # 新浏览器/IPC 连接是干净的，清零超时计数
         logger.info("✅ 浏览器初始化完成")
 
     async def safe_close_browser(self):
@@ -167,9 +169,9 @@ class Monitor:
             return True
         return False
 
-    async def restart_browser(self):
-        """无条件重启浏览器，用于凭证更新后热加载新cookie（v4.7）"""
-        logger.info("♻️ 强制重启浏览器（凭证更新触发）")
+    async def restart_browser(self, reason="凭证更新触发"):
+        """无条件重启浏览器；reason 仅用于日志区分触发原因（凭证更新 / 连续超时恢复）"""
+        logger.info(f"♻️ 强制重启浏览器（{reason}）")
         await self.safe_close_browser()
         await asyncio.sleep(2)
         await self.initialize_browser()
@@ -420,9 +422,26 @@ class Monitor:
                     self.comment_renderer.get_pinned_comment(page, dynamic_id), timeout=20)
             except (asyncio.TimeoutError, PlaywrightTimeoutError):
                 logger.error(f"⏰ 超时 {dynamic_id}")
+                # v5.3：超时后页面导航可能仍挂在后台，继续复用会连环超时；
+                # 弃掉卡住的页面，下一轮自动新建。连续2次超时说明上下文也不健康，重建浏览器兜底
+                self._timeout_streak += 1
+                try:
+                    if self.page and not self.page.is_closed():
+                        await asyncio.wait_for(self.page.close(), timeout=5)
+                except Exception as e:
+                    logger.warning(f"⚠️ 关闭超时页面失败（已弃用该页面）: {e}")
+                self.page = None
+                if self._timeout_streak >= 2:
+                    logger.warning(f"⚠️ 连续 {self._timeout_streak} 次超时，重建浏览器")
+                    try:
+                        await asyncio.wait_for(self.restart_browser("连续超时恢复"), timeout=30)
+                        self._timeout_streak = 0
+                    except Exception as e:
+                        logger.error(f"❌ 连续超时后重建浏览器失败: {e}")
                 return False
             if not current_html or "未找到置顶评论" in current_html:
                 logger.warning(f"⚠️ 无置顶评论 {dynamic_id}")
+                self._timeout_streak = 0  # 页面能正常加载，说明页面健康
                 # 首次部署或置顶评论被取消：游标至少要有动态 ID，rpid 显式清空
                 try:
                     await asyncio.to_thread(
@@ -469,6 +488,7 @@ class Monitor:
             self.history_data["pinned_comments"] = pc
             self.history_data["last_pinned_dynamic_id"] = dynamic_id
             self.health_checker.increment_success()
+            self._timeout_streak = 0  # 本轮抓取成功，清零连续超时计数
             return True
         except Exception as e:
             logger.error(f"❌ 检测评论异常: {e}")
