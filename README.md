@@ -87,14 +87,16 @@ BTCE/
 ├── logger_config.py           # 日志配置
 ├── get_cookies.py             # Cookie 获取工具
 ├── manual_publish.py          # 手动发布B站动态工具
+├── qbot/                      # QQ 官方 Bot 适配器（独立进程）
 ├── assets/                    # 卡片资源（示例签名 PNG）
+├── DEPLOY.md                  # 完整部署指南
 ├── requirements.txt           # Python 依赖
 ├── LICENSE                    # MIT 开源协议
 ├── mermaid-diagram.png        # 架构流程图
 └── .gitignore                 # Git 忽略规则
 ```
 
-> QQ 官方 Bot 通道依赖同机独立项目 qbot（`ttkj-bot`），不在本仓库内。
+> QQ 官方 Bot 通道依赖仓库内 `qbot/` 子目录（独立进程）；完整部署步骤见 `DEPLOY.md`。
 
 ## 快速开始
 
@@ -103,6 +105,8 @@ BTCE/
 pip install -r requirements.txt
 playwright install chromium
 ```
+
+系统依赖（中文字体、emoji 字体、Playwright 系统库）见 `DEPLOY.md` 第 1 节。
 
 ### 2. 获取 Cookie
 ```bash
@@ -116,8 +120,11 @@ cp config_email.example.py config_email.py      # SMTP + 收件人
 cp config_qq.example.py config_qq.py            # NapCat 群号 + 可选官方 Bot
 cp config_custom.example.py config_custom.py    # 个性化文案（可选，不填用通用默认）
 cp config_github.example.py config_github.py    # GitHub 通知归档（可选，不填则关闭）
+cd qbot
+cp config_custom.example.py config_custom.py    # 官方 Bot 凭证/群 openid
+cd ..
 ```
-编辑配置文件，填入真实信息。
+编辑配置文件，填入真实信息。qbot 的完整配置步骤见 `qbot/README.md`。
 
 在 `config.py` 中设置：
 - `UP_UID`：监控的 UP 主 UID
@@ -136,15 +143,16 @@ pm2 start main.py --name bili-monitor --interpreter python3
 
 ### 5. 官方 Bot 通道（v5.4 默认）
 
-需要同机常驻 qbot（独立项目 `ttkj-bot`，监听 `127.0.0.1:8089`）：
+需要常驻仓库内 `qbot/` 进程（监听 `127.0.0.1:8089`）：
 
-1. 在 qbot 侧配置 `QBOT_ENV=prod`、`QBOT_APP_ID`、`QBOT_APP_SECRET`、`QBOT_BOT_OPENID`；
+1. 在 `qbot/config_custom.py` 配置 `QBOT_ENV=prod`、`QBOT_APP_ID`、`QBOT_APP_SECRET`、`QBOT_BOT_OPENID`；
 2. 配置 `QBOT_CALLBACK_FORWARD_URL = "http://127.0.0.1:15510/official/callback"`；
 3. 在 BTCE 的 `config_qq.py` 设置 `QQ_OFFICIAL_ENABLED = True`、`QQ_OFFICIAL_GROUPS = ["test1"]`（别名，不是 QQ 群号）；
 4. 把管理员 `member_openid` 填入 `QQ_OFFICIAL_ADMIN_OPENIDS`（不是 QQ 号）；
 5. 先启动 qbot，重启 BTCE；在群里 @ 机器人发 `状态` 验证。
 
-v5.4 起默认只走官方通道（`QQ_NAPCAT_ENABLED = False`）；如需回滚 NapCat，把该开关改回 `True`。详细步骤见 `开发者指南-仿站必读.md` 第 6.7~6.12 节。
+v5.4 起默认只走官方通道（`QQ_NAPCAT_ENABLED = False`）；如需回滚 NapCat，把该开关改回 `True`。
+qbot 的安装、群 openid 发现和 HTTP 契约见 `qbot/README.md`；完整服务器部署见 `DEPLOY.md`。
 
 ## 配置说明
 
@@ -162,6 +170,7 @@ v5.4 起默认只走官方通道（`QQ_NAPCAT_ENABLED = False`）；如需回滚
 | NapCat 推送 | `config_qq.py` | NapCat 机器人 API + QQ 群号（v5.4 默认关闭） |
 | 官方 Bot | `config_qq.py` | 双通道开关、`QQ_OFFICIAL_GROUPS`、管理员 member_openid、qbot 地址 |
 | 官方卡片 | `config_qq.py` `QQ_CARD_ENABLED` / `QQ_CARD_FALLBACK_IMAGE` | 新动态/直播图文卡片与空白兜底图（v5.4） |
+| qbot | `qbot/config_custom.py` | 官方 Bot 凭证、群 openid、管理员、转发口令（模板 `qbot/config_custom.example.py`） |
 | GitHub 归档 | `config_github.py` | 私有仓库/Token/开关/共同作者 trailer（模板 `config_github.example.py`） |
 | 浏览器参数 | `config.py` `BROWSER_CONFIG` | headless 模式 |
 
@@ -178,7 +187,7 @@ v5.4 起默认只走官方通道（`QQ_NAPCAT_ENABLED = False`）；如需回滚
 - Cookie 约 7 天失效，需定期更新
 - v4.14 起置顶动态 API 自动发现，无需手动更新 `PINNED_DYNAMIC_ID`
 - 官方 Bot 通道依赖 qbot 常驻；`QQ_OFFICIAL_GROUPS` 是 qbot 群别名，`QQ_OFFICIAL_ADMIN_OPENIDS` 是 `member_openid`，都不是 QQ 号
-- NapCat 里的 QQ 大版本会被腾讯强制更新（版本过低会拒绝登录），升级步骤见 `开发者指南-仿站必读.md` 第 10.7 节
+- NapCat 里的 QQ 大版本会被腾讯强制更新（版本过低会拒绝登录），升级后需要重新扫码登录；详见 `DEPLOY.md` 第 6 节
 - 请勿将 `config_email.py`、`config_qq.py`、`config_custom.py`、`config_github.py`、`cookies.json` 提交到公开仓库
 
 ## 免责声明

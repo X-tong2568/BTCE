@@ -1,4 +1,5 @@
 .venv/
+.venv39/
 venv/
 __pycache__/
 logs/
@@ -21,6 +22,10 @@ test_publish.py
 test_api_alerts.py
 manual_publish.py
 tests/
+qbot/config_custom.py
+qbot/data/
+qbot/logs/
+qbot/*.log
 *.png
 !mermaid-diagram.png
 !assets/signature_example.png
