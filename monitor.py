@@ -17,7 +17,6 @@ from config import (
     AUTO_PUBLISH_ENABLED, AUTO_PUBLISH_TOPIC_ID, AUTO_PUBLISH_TOPIC_NAME,
     QQ_MODE, EMAIL_MODE, BILI_MODE,
     DYNAMIC_SKIP_TYPES,
-    QQ_BATCH_LINK_LABEL, QQ_BATCH_TIME_LABEL,
     EMAIL_PINNED_SUBJECT,
 )
 from render_comment import CommentRenderer
@@ -27,7 +26,7 @@ from health_check import HealthChecker
 from logger_config import logger
 from retry_decorator import BROWSER_RETRY_CONFIG, async_retry
 from performance_monitor import performance_monitor
-from qq_utils import send_qq_message
+from qq_utils import send_qq_message, send_qq_card
 from config_qq import QQ_GROUP_IDS
 from bili_api import BiliAPI
 from pinned_dynamic_monitor import (
@@ -280,6 +279,23 @@ class Monitor:
             logger.warning(f"⚠️ 截图失败: {dynamic_id} {e}")
             return None
 
+    @staticmethod
+    def _build_new_dynamic_card(up_name: str, dyn: dict) -> dict:
+        """构造新动态卡片：有正文写正文，没有正文用固定兜底文案。"""
+        content_text = str(dyn.get("content") or "").strip()
+        description = content_text or f"{up_name} 发布了新动态"
+        if len(description) > 200:
+            description = description[:197] + "..."
+        images = dyn.get("images") or []
+        pic_url = images[0] if images else (dyn.get("cover") or "")
+        return {
+            "title": f"【{up_name}】发布了新动态~",
+            "description": description,
+            # B站新动态页用 opus 域名，QQ 卡片底部会显示蓝色的「哔哩哔哩」
+            "url": f"https://www.bilibili.com/opus/{dyn['dynamic_id']}",
+            "pic_url": pic_url,
+        }
+
     async def _handle_new_dynamics_batch(self, new_dynamics, up_name):
         if not new_dynamics: return
         try:
@@ -350,39 +366,23 @@ class Monitor:
             asyncio.create_task(asyncio.to_thread(send_email, subject=f"【{up_name}】发布了 {len(new_dynamics)} 条新动态", content=email_body))
             logger.info("📧 新动态邮件已提交")
 
-            # QQ推送（走统一的消息生成器）
-            if len(new_dynamics) == 1:
-                dyn = new_dynamics[0]
-                url = f"https://t.bilibili.com/{dyn['dynamic_id']}"
+            # QQ推送：官方卡片（每条一张）；NapCat/卡片失败回退旧文本
+            for dyn in new_dynamics:
+                qq_url = f"https://www.bilibili.com/opus/{dyn['dynamic_id']}"
                 shot = dyn.get("screenshot_path") or ""
                 try:
                     shot_ok = bool(shot) and Path(shot).is_file() and Path(shot).stat().st_size > 0
                 except OSError:
                     shot_ok = False
                 if shot_ok:
-                    # 新动态单条：只发截图，不附正文
-                    msg = self.comment_renderer.generate_new_dynamic_qq_message(
-                        up_name, dyn['dynamic_id'], url, current_time, "", shot)
+                    fallback_msg = self.comment_renderer.generate_new_dynamic_qq_message(
+                        up_name, dyn['dynamic_id'], qq_url, current_time, "", shot)
                 else:
-                    # 截图失败兜底：沿用统一超时降级文案
-                    msg = self.comment_renderer.qq_generator.generate_new_dynamic_degraded_message(
+                    fallback_msg = self.comment_renderer.qq_generator.generate_new_dynamic_degraded_message(
                         up_name, dyn['dynamic_id'], current_time)
-                # 传 message_data:原始消息失败后自动补发纯文本降级消息(图片超时消息不丢失)
-                await send_qq_message(msg, {
-                    "up_name": up_name,
-                    "dynamic_id": dyn['dynamic_id'],
-                    "current_html": dyn.get("content_html") or dyn.get("content", ""),
-                    "current_time": current_time,
-                    "current_images": dyn.get("images", []),
-                    "degraded_type": "new_dynamic",
-                })
-            else:
-                # 多条极少出现，简单拼装
-                lines = [f"【{up_name}】发布了 {len(new_dynamics)} 条新动态~"]
-                for d in new_dynamics[:5]:
-                    lines.append(f"{QQ_BATCH_LINK_LABEL} https://t.bilibili.com/{d['dynamic_id']}")
-                lines.append(f"{QQ_BATCH_TIME_LABEL} {current_time}")
-                await send_qq_message('\n'.join(lines))
+                card = self._build_new_dynamic_card(up_name, dyn)
+                await send_qq_card(card, fallback_msg)
+                logger.info(f"✅ 新动态卡片已提交: {dyn['dynamic_id']}")
 
             # ── GitHub 归档（异步，失败不影响推送）──
             try:
@@ -710,6 +710,7 @@ class Monitor:
                                     "content": d.get("content", ""),
                                     "content_html": d.get("content_html", ""),
                                     "images": d.get("images", []),
+                                    "cover": d.get("cover", ""),
                                 })
                     if skipped_count:
                         logger.info(f"⏭️ 跳过 {skipped_count} 条自动生成动态（类型: {DYNAMIC_SKIP_TYPES}）")

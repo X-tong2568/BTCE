@@ -20,6 +20,7 @@ tmp_*.txt
 test_publish.py
 test_api_alerts.py
 manual_publish.py
+tests/
 *.png
 !mermaid-diagram.png
 !assets/signature_example.png

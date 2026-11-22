@@ -135,12 +135,20 @@ class BiliAPI:
                         src = src.replace("http://", "https://")
                     images.append(src)
 
+            # 视频动态没有 draw 图片，封面在 major.archive.cover
+            cover = (major.get("archive") or {}).get("cover", "") or ""
+            if cover.startswith("//"):
+                cover = "https:" + cover
+            elif cover.startswith("http://"):
+                cover = cover.replace("http://", "https://", 1)
+
             result.append({
                 "dynamic_id": dyn_id,
                 "type": dyn_type,
                 "content": content.strip(),
                 "content_html": content_html.strip(),
                 "images": images,
+                "cover": cover,
                 "timestamp": 0,
                 "module_tag": (modules.get("module_tag") or {}).get("text", ""),
             })

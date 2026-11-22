@@ -15,7 +15,7 @@ import time
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 import aiohttp
 from aiohttp import web
 from logger_config import logger
@@ -25,7 +25,11 @@ from config_qq import (
     QQ_OFFICIAL_ADMIN_OPENIDS, QQ_OFFICIAL_FORWARD_TOKEN,
     QQBOT_REPLY_URL, QQBOT_SEND_URL, QQBOT_SEND_TOKEN,
 )
-from qq_utils import load_official_groups, set_official_group
+from qq_utils import (
+    load_official_groups,
+    rename_official_group,
+    set_official_group,
+)
 
 from pinned_dynamic_monitor import set_mode_manual, set_mode_auto, get_mode
 
@@ -181,6 +185,37 @@ async def _fetch_official_qbot_groups() -> dict:
     return {}
 
 
+async def _rename_official_qbot_group(old_alias: str, new_alias: str) -> Tuple[bool, str]:
+    """调用 qbot /official_alias 修改群别名；返回 (是否成功, 错误信息)。"""
+    base_url = QQBOT_SEND_URL.rsplit("/", 1)[0]
+    headers = {"Content-Type": "application/json"}
+    if QQBOT_SEND_TOKEN:
+        headers["Authorization"] = "Bearer " + QQBOT_SEND_TOKEN
+    payload = {"old": old_alias, "new": new_alias}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                base_url + "/official_alias",
+                json=payload,
+                headers=headers,
+                timeout=15,
+            ) as response:
+                result = await response.json(content_type=None)
+        if isinstance(result, dict) and result.get("code") == 0:
+            return True, ""
+        if isinstance(result, dict):
+            return False, str(result.get("msg") or result)
+        return False, str(result)
+    except Exception as exc:
+        logger.error(
+            "修改官方群别名异常: old=%s new=%s err=%s",
+            old_alias,
+            new_alias,
+            exc,
+        )
+        return False, str(exc)
+
+
 async def _official_list_text(extra_aliases: Optional[list] = None) -> str:
     """生成官方群列表，✓=BTCE 正在推送，✗=未推送。"""
     enabled = set(load_official_groups())
@@ -193,8 +228,10 @@ async def _official_list_text(extra_aliases: Optional[list] = None) -> str:
     lines = []
     for alias, info in all_aliases.items():
         mark = "✓" if alias in enabled else "✗"
-        source = info.get("source", "?") if isinstance(info, dict) else "?"
-        lines.append(mark + " " + str(alias) + " (" + str(source) + ")")
+        source = str(info.get("source", "?")) if isinstance(info, dict) else "?"
+        tail = str(info.get("openid_tail") or "") if isinstance(info, dict) else ""
+        label = source + (" " + tail if tail else "")
+        lines.append(mark + " " + str(alias) + " (" + label + ")")
     for alias in sorted(enabled - set(all_aliases.keys())):
         lines.append("✓ " + alias + " (qbot 未配置)")
     if not lines:
@@ -203,6 +240,7 @@ async def _official_list_text(extra_aliases: Optional[list] = None) -> str:
         "官方渠道列表（✓=推送中）:\n"
         + "\n".join(lines)
         + "\n操作: @bot 开启官方推送 <别名> / @bot 关闭官方推送 <别名>"
+        + " / @bot 修改别名 <当前别名> <新别名>"
     )
 
 
@@ -430,7 +468,8 @@ async def handle_callback(request: web.Request) -> web.Response:
             "🔹 官方渠道（管理群，仅管理员）：\n"
             "　@机器人 官方列表　→ 查看官方群及推送状态\n"
             "　@机器人 开启官方推送 <别名>　→ 开启某官方群推送\n"
-            "　@机器人 关闭官方推送 <别名>　→ 关闭某官方群推送"
+            "　@机器人 关闭官方推送 <别名>　→ 关闭某官方群推送\n"
+            "　@机器人 修改别名 <当前别名> <新别名>　→ 修改官方群别名"
         )
         await _reply_to_group(group_id, help_text)
         return web.json_response({"status": "ok"})
@@ -504,6 +543,44 @@ async def handle_official_callback(request: web.Request) -> web.Response:
     # 官方渠道列表
     if re.search(r"(官方列表|官方推送列表)", content):
         await _reply_to_official_group(alias, msg_id, await _official_list_text())
+        return web.json_response({"status": "ok"})
+
+    # 修改群别名：@bot 修改别名 <当前别名> <新别名>
+    match_rename = re.search(r"修改别名\s+(\S+)\s+(\S+)", content)
+    if match_rename:
+        old_alias = match_rename.group(1)
+        new_alias = match_rename.group(2)
+        reply_alias = alias
+        if old_alias == new_alias:
+            reply = "新旧别名相同，无需修改"
+        elif len(new_alias) > 32 or any(ch.isspace() for ch in new_alias):
+            reply = "新别名必须非空、无空白且不超过32字符"
+        else:
+            enabled = load_official_groups()
+            qbot_groups = await _fetch_official_qbot_groups()
+            if qbot_groups and old_alias not in qbot_groups:
+                reply = "未知的当前别名: " + old_alias
+            elif new_alias in qbot_groups:
+                reply = "新别名已被占用: " + new_alias
+            elif new_alias in enabled:
+                reply = "新别名已在推送列表中: " + new_alias
+            else:
+                qbot_ok, qbot_err = await _rename_official_qbot_group(old_alias, new_alias)
+                if not qbot_ok:
+                    reply = "修改别名失败: " + qbot_err
+                elif rename_official_group(old_alias, new_alias):
+                    reply = "已修改别名: " + old_alias + " -> " + new_alias
+                    if old_alias == alias:
+                        reply_alias = new_alias
+                else:
+                    rollback_ok, _ = await _rename_official_qbot_group(new_alias, old_alias)
+                    if rollback_ok:
+                        reply = "BTCE 推送列表更新失败，qbot 别名已回滚"
+                    else:
+                        reply = "BTCE 更新失败且 qbot 回滚失败，请手工检查"
+                        if old_alias == alias:
+                            reply_alias = new_alias
+        await _reply_to_official_group(reply_alias, msg_id, reply)
         return web.json_response({"status": "ok"})
 
     # 开启/关闭官方推送（不写别名时操作当前群）
@@ -669,6 +746,7 @@ async def handle_official_callback(request: web.Request) -> web.Response:
             "@机器人 官方列表\n"
             "@机器人 开启官方推送 [别名]\n"
             "@机器人 关闭官方推送 [别名]\n"
+            "@机器人 修改别名 <当前别名> <新别名>\n"
             "@机器人 帮助"
         )
         await _reply_to_official_group(alias, msg_id, help_text)

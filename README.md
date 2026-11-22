@@ -1,4 +1,4 @@
-# BTCE 5.3 — B站动态/直播监控系统
+# BTCE 5.4 — B站动态/直播监控系统
 
 基于 Python + Playwright 的 Bilibili UP 主动态和直播自动化监控系统，支持多通道实时通知及自动发布动态。
 
@@ -12,6 +12,7 @@
 
 | 版本 | 主要变更 |
 |------|---------|
+| **v5.4** | 官方新动态/直播图文卡片 + 群别名管理 |
 | **v5.3** | 超时后弃用卡死页面，连续2次超时重建浏览器 |
 | **v5.2** | QQ推送模板统一文-文-图（图片放末尾） |
 | **v5.1** | 归档提交附加共同作者标识 |
@@ -45,10 +46,10 @@
 
 ## 核心功能
 
-1. **置顶评论监控** — Playwright 打开置顶动态，抓取置顶评论文字+图片，变化时推送邮件/QQ/B站；推送模式三通道可配（screenshot 模式使用固定宽度卡片渲染）；支持 NapCat 与 QQ 官方 Bot 双通道并行（v5.0），支持 QQ 群 @机器人 实时更换置顶动态ID（两通道均可）
-2. **新动态检测** — API 定时获取动态列表，差集比对发现新动态，卡片截图 QQ 推送
-3. **直播监控** — 轮询 B站直播 API，开播/下播/标题变化即时通知；标题更新自动发布B站动态（封面+链接+房间状态标签）
-4. **多通道通知** — 邮件（HTML 格式）+ QQ 群（NapCat / 官方 Bot 双通道，文字/CQ码图片/卡片截图）+ B站动态话题
+1. **置顶评论监控** — Playwright 打开置顶动态，抓取置顶评论文字+图片，变化时推送邮件/QQ/B站；推送模式三通道可配（screenshot 模式使用固定宽度卡片渲染）；支持 NapCat 与 QQ 官方 Bot 双通道并行（v5.0；v5.4 默认关闭 NapCat），支持 QQ 群 @机器人 实时更换置顶动态ID（两通道均可）
+2. **新动态检测** — API 定时获取动态列表，差集比对发现新动态；官方通道使用图文卡片（v5.4）
+3. **直播监控** — 轮询 B站直播 API，开播/下播/标题变化即时通知；官方通道使用图文卡片（v5.4）；标题更新自动发布B站动态（封面+链接+房间状态标签）
+4. **多通道通知** — 邮件（HTML 格式）+ QQ 群（NapCat / 官方 Bot 双通道，文字/CQ码图片/图文卡片）+ B站动态话题
 5. **系统运维** — 健康检查、性能监控、日志轮转、浏览器自动重启、P1/P2 告警
 6. **通知归档** — 置顶评论/开播/下播/标题修改/新动态自动归档到 GitHub 私有仓库，按月生成可搜索 MD/CSV；置顶评论直接写入 `ttkj/`，粉丝互动按月汇总；图片内联，README 自动索引
 
@@ -57,10 +58,10 @@
 ```
 BTCE/
 ├── main.py                    # 程序入口
-├── monitor.py                 # 核心监控逻辑（v4.16: screenshot 模式接入卡片渲染）
+├── monitor.py                 # 核心监控逻辑（v5.4: 新动态官方卡片）
 ├── pinned_card_renderer.py    # 置顶评论卡片渲染（v4.17：字号/图片宽度/签名位置）
 ├── auto_publish.py            # B站动态自动发布模块（v4.2）
-├── bili_api.py                # B站动态列表 API 客户端（v4.14: +_fetch_raw+module_tag）
+├── bili_api.py                # B站动态列表 API 客户端（v5.4: +视频封面）
 ├── pinned_dynamic_monitor.py  # 置顶自动发现+手动/自动双模式（v4.14）
 ├── live_monitor.py            # 直播状态监控
 ├── monitor_scheduler.py       # 直播监控调度器
@@ -69,14 +70,14 @@ BTCE/
 ├── archive_utils.py           # 通知归档：MD/CSV+图片+GitHub提交（v4.22）
 ├── email_utils.py             # SMTP 邮件发送
 ├── qq_message_generator.py    # QQ 消息生成
-├── qq_utils.py                # QQ 消息推送（NapCat + 官方 Bot 双通道，v5.0）
-├── qq_callback_server.py      # QQ 回调服务器（NapCat + 官方 qbot，v5.0）
+├── qq_utils.py                # QQ 消息推送（双通道 + 官方图文卡片，v5.4）
+├── qq_callback_server.py      # QQ 回调服务器（双入口 + 官方群别名管理，v5.4）
 ├── cookie_renewer.py          # Cookie远程更新（v4.7）
 ├── color_config.py            # 邮件渐变色配置
 ├── config.py                  # 主配置（末尾 from config_custom import *）
 ├── config_custom.example.py   # 个性化文案配置模板（v4.14: config_custom模式）
 ├── config_email.example.py    # 邮箱配置模板
-├── config_qq.example.py       # QQ/NapCat + 官方 Bot 配置模板（v5.0）
+├── config_qq.example.py       # QQ/NapCat + 官方 Bot 配置模板（v5.4: 卡片/兜底图）
 ├── config_github.example.py   # GitHub 归档配置模板（v4.19）
 ├── health_check.py            # 健康检查
 ├── performance_monitor.py     # 性能监控+P1/P2告警+日报
@@ -133,7 +134,7 @@ python main.py
 pm2 start main.py --name bili-monitor --interpreter python3
 ```
 
-### 5. 官方 Bot 通道（可选）
+### 5. 官方 Bot 通道（v5.4 默认）
 
 需要同机常驻 qbot（独立项目 `ttkj-bot`，监听 `127.0.0.1:8089`）：
 
@@ -143,7 +144,7 @@ pm2 start main.py --name bili-monitor --interpreter python3
 4. 把管理员 `member_openid` 填入 `QQ_OFFICIAL_ADMIN_OPENIDS`（不是 QQ 号）；
 5. 先启动 qbot，重启 BTCE；在群里 @ 机器人发 `状态` 验证。
 
-不启用时保持 `QQ_OFFICIAL_ENABLED = False`，NapCat 行为完全不变。详细步骤见 `开发者指南-仿站必读.md` 第 6.7~6.12 节。
+v5.4 起默认只走官方通道（`QQ_NAPCAT_ENABLED = False`）；如需回滚 NapCat，把该开关改回 `True`。详细步骤见 `开发者指南-仿站必读.md` 第 6.7~6.12 节。
 
 ## 配置说明
 
@@ -158,8 +159,9 @@ pm2 start main.py --name bili-monitor --interpreter python3
 | 卡片渲染 | `config.py` `CARD_*` | 宽度/常规字号/短内容字号/评论图宽度/签名路径；签名可在 config_custom.py 覆盖 |
 | 个性化文案 | `config_custom.py` | 覆盖通用默认值（QQ消息/邮件标题等），gitignored |
 | 邮箱 | `config_email.py` | SMTP + 收发人 |
-| NapCat 推送 | `config_qq.py` | NapCat 机器人 API + QQ 群号 |
-| 官方 Bot | `config_qq.py` | 双通道开关、`QQ_OFFICIAL_GROUPS`、管理员 member_openid、qbot 地址（v5.0） |
+| NapCat 推送 | `config_qq.py` | NapCat 机器人 API + QQ 群号（v5.4 默认关闭） |
+| 官方 Bot | `config_qq.py` | 双通道开关、`QQ_OFFICIAL_GROUPS`、管理员 member_openid、qbot 地址 |
+| 官方卡片 | `config_qq.py` `QQ_CARD_ENABLED` / `QQ_CARD_FALLBACK_IMAGE` | 新动态/直播图文卡片与空白兜底图（v5.4） |
 | GitHub 归档 | `config_github.py` | 私有仓库/Token/开关/共同作者 trailer（模板 `config_github.example.py`） |
 | 浏览器参数 | `config.py` `BROWSER_CONFIG` | headless 模式 |
 

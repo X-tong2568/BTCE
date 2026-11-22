@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from logger_config import logger
+import config_qq
 from config_qq import (
     QQ_BOT_API_URL,
     QQ_BOT_ACCESS_TOKEN,
@@ -23,6 +24,10 @@ from config_qq import (
     QQ_OFFICIAL_WAIT_SECONDS,
 )
 from qq_message_generator import qq_message_generator
+
+# 兼容尚未更新配置的服务器：缺省开启卡片，兜底图留空（无图时回退文本）。
+QQ_CARD_ENABLED = getattr(config_qq, "QQ_CARD_ENABLED", True)
+QQ_CARD_FALLBACK_IMAGE = getattr(config_qq, "QQ_CARD_FALLBACK_IMAGE", "")
 
 # NapCat 的 sendMsg IPC 超时约 10 秒；原始消息失败后等这个窗口过去再补降级消息。
 DEGRADED_RETRY_DELAY_SECONDS = 10
@@ -78,6 +83,32 @@ def set_official_group(alias: str, enabled: bool) -> bool:
         aliases.remove(alias)
     save_official_groups(aliases)
     logger.info("官方推送状态更新: alias=%s enabled=%s", alias, enabled)
+    return True
+
+
+def rename_official_group(old_alias: str, new_alias: str) -> bool:
+    """把官方推送列表里的旧别名改成新别名；旧别名未启用时也返回成功。"""
+    old_alias = str(old_alias or "").strip()
+    new_alias = str(new_alias or "").strip()
+    if (
+        not old_alias
+        or not new_alias
+        or len(new_alias) > 32
+        or any(ch.isspace() for ch in new_alias)
+    ):
+        return False
+
+    aliases = load_official_groups()
+    if old_alias not in aliases:
+        return new_alias not in aliases
+    if old_alias == new_alias:
+        return True
+    if new_alias in aliases:
+        return False
+
+    aliases = [new_alias if alias == old_alias else alias for alias in aliases]
+    save_official_groups(aliases)
+    logger.info("官方推送别名已更新: %s -> %s", old_alias, new_alias)
     return True
 
 
@@ -212,6 +243,21 @@ class QQMessageSender:
         if not parts:
             return None
 
+        return await self._post_official_parts(alias, parts)
+
+    async def _post_official_parts(
+        self,
+        alias: str,
+        parts: List[Dict[str, Any]],
+    ) -> Optional[bool]:
+        """把构造好的 parts 提交给 qbot；异常只记日志，不冒泡。"""
+        if not QQ_OFFICIAL_ENABLED:
+            return None
+
+        alias = str(alias or "").strip()
+        if not alias or not parts:
+            return None
+
         wait_seconds = int(QQ_OFFICIAL_WAIT_SECONDS or 0)
         payload = {
             "group": alias,
@@ -253,6 +299,33 @@ class QQMessageSender:
         msg = result.get("msg") if isinstance(result, dict) else result
         logger.error("官方QQ通道失败: alias=%s code=%s msg=%s", alias, code, msg)
         return False
+
+    async def _send_official_card(
+        self,
+        alias: str,
+        card: Dict[str, Any],
+    ) -> Optional[bool]:
+        """官方通道：发送 msg_type=8 图文卡片（qbot card part）。"""
+        if not QQ_OFFICIAL_ENABLED:
+            return None
+
+        title = str(card.get("title") or "").strip()
+        description = str(card.get("description") or "").strip()
+        url = str(card.get("url") or "").strip()
+        pic_url = str(card.get("pic_url") or "").strip()
+        if not title or not description or not url or not pic_url:
+            logger.error("官方卡片字段不完整，跳过: alias=%s", alias)
+            return False
+
+        # 平台硬限制：title 50、description 200；超长直接 400，本地先截断。
+        part = {
+            "type": "card",
+            "title": title[:50],
+            "description": description[:200],
+            "url": url[:1024],
+            "pic_url": pic_url[:1024],
+        }
+        return await self._post_official_parts(alias, [part])
 
     def _build_targets(self) -> List[Tuple[str, str]]:
         """NapCat 群列表 + 官方别名列表，两个列表独立维护。"""
@@ -325,6 +398,52 @@ class QQMessageSender:
             logger.warning("⚠️ 推送结果: %s成功, %s失败", success_count, total_count - success_count)
         return results
 
+    async def send_card(self, card: Dict[str, Any], napcat_text: str = "") -> List[bool]:
+        """新动态/直播卡片：官方走卡片；NapCat 和官方失败回退旧文本。"""
+        if not QQ_PUSH_ENABLED:
+            logger.info("QQ推送已禁用，跳过发送")
+            return []
+        if not QQ_CARD_ENABLED:
+            if not napcat_text:
+                logger.warning("卡片开关已关闭且没有旧文本，跳过发送")
+                return []
+            return await self.send_to_all_groups(napcat_text)
+
+        card = dict(card or {})
+        if not str(card.get("pic_url") or "").strip() and QQ_CARD_FALLBACK_IMAGE:
+            card["pic_url"] = QQ_CARD_FALLBACK_IMAGE
+
+        targets = self._build_targets()
+        if not targets:
+            logger.warning("NapCat/官方通道都未配置推送目标，跳过发送")
+            return []
+
+        results: List[bool] = []
+        for channel, value in targets:
+            if channel == "official":
+                result = await self._send_official_card(value, card)
+                if result is False and napcat_text:
+                    logger.warning("官方卡片发送失败，补发旧文本: alias=%s", value)
+                    fallback = await self._send_official(value, napcat_text)
+                    result = bool(fallback) if fallback is not None else True
+                results.append(bool(result) if result is not None else True)
+            elif channel == "napcat":
+                if napcat_text:
+                    results.append(await self._send_napcat(value, napcat_text, False))
+                else:
+                    results.append(True)
+            else:
+                logger.error("未知推送通道: %s", channel)
+                results.append(False)
+
+        success_count = sum(1 for result in results if result)
+        total_count = len(results)
+        if success_count == total_count:
+            logger.info("✅ 所有卡片推送目标发送成功 (%s/%s)", success_count, total_count)
+        else:
+            logger.warning("⚠️ 卡片推送结果: %s成功, %s失败", success_count, total_count - success_count)
+        return results
+
     async def send_with_degradation(self, original_message: str, message_data: dict) -> List[bool]:
         """带降级机制：原始消息失败的目标，等 NapCat 超时窗口后补降级消息。"""
         if not QQ_PUSH_ENABLED:
@@ -383,3 +502,8 @@ async def send_qq_message(message: str, message_data: Optional[dict] = None) -> 
     if message_data and any(key in message_data for key in ["up_name", "dynamic_id", "current_html"]):
         return await qq_sender.send_with_degradation(message, message_data)
     return await qq_sender.send_to_all_groups(message)
+
+
+async def send_qq_card(card: Dict[str, Any], napcat_text: str = "") -> List[bool]:
+    """发送官方图文卡片（新动态/直播）：官方走卡片，NapCat/失败回退旧文本。"""
+    return await qq_sender.send_card(card, napcat_text)

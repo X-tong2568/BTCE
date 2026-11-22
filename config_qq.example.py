@@ -18,9 +18,10 @@ MAX_MESSAGE_LENGTH = 2500
 QQ_PUSH_ENABLED = True
 
 # ===== 双通道开关 =====
-QQ_NAPCAT_ENABLED = True
-# 官方渠道默认关闭；测试/切换官方时改 True
-QQ_OFFICIAL_ENABLED = False
+# NapCat 已于 2026-11-23 停用；需要回滚时改 True
+QQ_NAPCAT_ENABLED = False
+# 官方通道是当前实际推送通道
+QQ_OFFICIAL_ENABLED = True
 
 # 官方推送列表：qbot 群别名（不是 QQ 群号），与 NapCat 的 QQ_GROUP_IDS 分开维护。
 # 不填就不往任何群推官方；把 bot 拉进群后，将 qbot 的 auto_N 或固定别名加到这里。
@@ -30,6 +31,13 @@ QQ_OFFICIAL_GROUPS = []
 QQBOT_SEND_URL = "http://127.0.0.1:8089/official_send"
 QQBOT_REPLY_URL = "http://127.0.0.1:8089/official_reply"
 QQBOT_SEND_TOKEN = ""
+
+# ===== 官方图文卡片（新动态/直播，2026-11-23）=====
+# True：新动态/直播走 msg_type=8 卡片；False：回退旧的纯文本推送。
+QQ_CARD_ENABLED = True
+# 封面/动态图片为空时的公网 HTTPS 兜底图（空白图或占位图）。
+# 留空表示没有图片时直接回退纯文本，不发卡片。
+QQ_CARD_FALLBACK_IMAGE = ""
 
 # 官方管理员 member_openid（不是 QQ 号）；只有这些账号的指令会回复。
 QQ_OFFICIAL_ADMIN_OPENIDS = []

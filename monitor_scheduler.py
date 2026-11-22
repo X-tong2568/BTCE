@@ -10,7 +10,7 @@ from config import (LIVE_ROOM_ID, LIVE_CHECK_INTERVAL, COOKIE_FILE, UP_NAME,
                     AUTO_PUBLISH_TOPIC_ID, AUTO_PUBLISH_TOPIC_NAME,
                     LIVE_BILI_PUBLISH_ENABLED)
 from email_utils import send_email
-from qq_utils import send_qq_message
+from qq_utils import send_qq_card
 from config_email import TO_EMAILS, STATUS_MONITOR_EMAILS
 import auto_publish
 
@@ -88,6 +88,34 @@ class LiveMonitorScheduler:
         except Exception as e:
             self.logger.error(f"❌❌ 执行直播检查异常: {e}")
 
+    @staticmethod
+    def _build_live_card(live_info: dict) -> dict:
+        """构造直播卡片：标题用旧模板，内容写直播间标题，不写时间。"""
+        change_type = live_info.get("change_type", "")
+        prefix = {
+            "live_start": "🎉 开播提醒",
+            "live_end": "💤 下播提醒",
+            "title_change": "✏️ 标题更新",
+        }.get(change_type, "📺 状态更新")
+
+        description = str(live_info.get("title") or "无标题").strip()
+        status_tags = qq_message_generator.build_live_status_tags(live_info)
+        if status_tags:
+            description = f"{description} | {status_tags}"
+        if len(description) > 200:
+            description = description[:197] + "..."
+
+        pic_url = str(live_info.get("cover") or "").strip()
+        if pic_url.startswith("http://"):
+            pic_url = "https://" + pic_url[7:]
+
+        return {
+            "title": f"【{UP_NAME}直播监控】{prefix}",
+            "description": description,
+            "url": f"https://live.bilibili.com/{live_info.get('room_id', '')}",
+            "pic_url": pic_url,
+        }
+
     async def send_live_notification(self, live_info: dict):
         """发送直播状态变化通知（邮件+QQ+B站动态）"""
         try:
@@ -107,9 +135,10 @@ class LiveMonitorScheduler:
             else:
                 self.logger.error("❌❌❌❌ 直播状态邮件发送失败")
 
-            # 生成QQ消息
+            # 生成QQ消息：官方走卡片，旧文本作为 NapCat/失败兜底
             qq_message = qq_message_generator.generate_live_qq_message(live_info)
-            qq_results = await send_qq_message(qq_message)
+            qq_card = self._build_live_card(live_info)
+            qq_results = await send_qq_card(qq_card, qq_message)
 
             qq_success_count = sum(1 for r in qq_results if r is True)
             if qq_results:
