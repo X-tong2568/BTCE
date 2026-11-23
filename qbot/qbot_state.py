@@ -15,6 +15,8 @@ logger = logging.getLogger("qbot")
 # 官方图文卡片（msg_type=8）字段上限，超限平台直接 400。
 CARD_TITLE_MAX = 50
 CARD_DESCRIPTION_MAX = 200
+# 卡片失败后补发的纯文本上限，与 msg_type=0 文本上限保持一致。
+CARD_FALLBACK_TEXT_MAX = 2000
 
 @dataclass
 class SendPart:
@@ -25,6 +27,7 @@ class SendPart:
     source: Optional[str] = None
     markdown: Optional[str] = None
     card: Optional[Dict[str, str]] = None
+    fallback_text: Optional[str] = None
 
 
 @dataclass
@@ -173,6 +176,7 @@ def normalize_part(raw: Any) -> SendPart:
             raise ValueError("card.url 必须是 http(s) 地址")
         if not pic_url.startswith(("http://", "https://")):
             raise ValueError("card.pic_url 必须是 http(s) 地址")
+        fallback_text = str(raw.get("fallback_text") or "").strip()
         return SendPart(
             type="card",
             card={
@@ -181,6 +185,7 @@ def normalize_part(raw: Any) -> SendPart:
                 "url": url,
                 "pic_url": pic_url,
             },
+            fallback_text=fallback_text[:CARD_FALLBACK_TEXT_MAX],
         )
 
     raise ValueError("不支持的 part 类型: " + part_type)

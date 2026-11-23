@@ -94,7 +94,7 @@ pm2 save
   "parts": [
     {"type": "text", "text": "文字"},
     {"type": "image", "source": "/path/to/a.png"},
-    {"type": "card", "title": "标题", "description": "描述", "url": "https://...", "pic_url": "https://..."}
+    {"type": "card", "title": "标题", "description": "描述", "url": "https://...", "pic_url": "https://...", "fallback_text": "卡片失败时补发的纯文本"}
   ],
   "wait": false,
   "request_id": "可选"
@@ -105,6 +105,8 @@ pm2 save
 - `wait=false` 时入队后立即返回；`wait=true` 时等待最终发送结果。
 - `card` 对应 `msg_type=8` 图文卡片；`title` ≤50 字、`description` ≤200 字，
   `url`/`pic_url` 必须是 http(s) 地址。
+- `fallback_text` 可选（≤2000 字）：卡片重试后仍失败时自动改发纯文本，
+  避免图片转存失败导致整条推送被吞。
 - 也兼容旧的 `{"type": "text", "content": "..."}` 单条格式。
 
 ### POST `/official_reply`

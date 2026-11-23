@@ -120,7 +120,7 @@ QQ_OFFICIAL_ADMIN_OPENIDS = []                   # member_openid，不是 QQ 号
 QQ_OFFICIAL_FORWARD_TOKEN = ""                   # 与 qbot 的 QBOT_FORWARD_TOKEN 一致
 QQ_OFFICIAL_WAIT_SECONDS = 0
 QQ_CARD_ENABLED = True
-QQ_CARD_FALLBACK_IMAGE = ""                      # 可选：公网 HTTPS 空白兜底图
+QQ_CARD_FALLBACK_IMAGE = ""                      # 已弃用（v5.5）：无图动态改发文本+截图
 ```
 
 ## 4. 配置 qbot
@@ -209,7 +209,8 @@ NapCat 使用 Xvfb 时还要确认无头显示和字体正常。
 3. BTCE 日志：启动无 `TypeError`，浏览器初始化成功，第一轮置顶抓取成功。
 4. 官方群发 `@bot 状态`，确认被动回复和群别名。
 5. 管理群发 `@bot 修改别名 <当前别名> <新别名>`，确认改名后 `@bot 官方列表` 同步。
-6. 向测试群发一条测试卡片（只发测试群），确认标题、描述、图片、底部站点名正常。
+6. 向测试群发一条测试卡片（只发测试群），确认标题、描述、图片、底部站点名正常；
+   再把 `pic_url` 换成不可用地址，确认 3 次重试后自动补发纯文本。
 7. 邮件测试：配置好后改一次置顶评论或发测试邮件，确认 `sent_emails/` 有备份。
 8. GitHub 归档：先 `GITHUB_ARCHIVE_DRY_RUN=True` 验证，再关闭 dry-run。
 9. B站自动发布：确认 `AUTO_PUBLISH_ENABLED`、话题 ID/名称和 Cookie 有效。
@@ -231,5 +232,6 @@ NapCat 使用 Xvfb 时还要确认无头显示和字体正常。
   置顶评论仍走完整文本+图片。
 - B站 App 的粉色分享卡片（Ark 分享模板）无法用 `msg_type=8` 复刻，卡片底部只显示站点名。
 - `QQ_OFFICIAL_WAIT_SECONDS=0` 时，qbot 队列内的异步发送失败由 qbot 重试；
-  BTCE 只处理 qbot 同步拒绝后的文本兜底。
+  v5.5 起卡片重试后仍失败会用 `fallback_text` 补发纯文本。
+  无配图的动态/直播不再发卡片，直接走文本（动态另带本地截图）。
 - NapCat 不是官方支持通道，QQ 版本升级可能导致掉线，需要预留回滚时间。

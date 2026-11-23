@@ -25,8 +25,10 @@ from config_qq import (
 )
 from qq_message_generator import qq_message_generator
 
-# 兼容尚未更新配置的服务器：缺省开启卡片，兜底图留空（无图时回退文本）。
+# 兼容尚未更新配置的服务器：缺省开启卡片。
 QQ_CARD_ENABLED = getattr(config_qq, "QQ_CARD_ENABLED", True)
+# 已弃用（2026-11-24）：兜底图会失效变 404，无法保证转存成功；
+# 无配图动态改为直接发文本+截图。保留变量只为兼容旧配置和测试。
 QQ_CARD_FALLBACK_IMAGE = getattr(config_qq, "QQ_CARD_FALLBACK_IMAGE", "")
 
 # NapCat 的 sendMsg IPC 超时约 10 秒；原始消息失败后等这个窗口过去再补降级消息。
@@ -110,6 +112,11 @@ def rename_official_group(old_alias: str, new_alias: str) -> bool:
     save_official_groups(aliases)
     logger.info("官方推送别名已更新: %s -> %s", old_alias, new_alias)
     return True
+
+
+def _plain_text_from_cq(message: str) -> str:
+    """把 CQ 图片码去掉，只保留纯文本，供卡片失败时兜底发送。"""
+    return _CQ_IMAGE_RE.sub("", message or "").strip()
 
 
 def _parse_cq_message(message: str) -> List[Dict[str, Any]]:
@@ -304,6 +311,7 @@ class QQMessageSender:
         self,
         alias: str,
         card: Dict[str, Any],
+        fallback_text: str = "",
     ) -> Optional[bool]:
         """官方通道：发送 msg_type=8 图文卡片（qbot card part）。"""
         if not QQ_OFFICIAL_ENABLED:
@@ -325,6 +333,10 @@ class QQMessageSender:
             "url": url[:1024],
             "pic_url": pic_url[:1024],
         }
+        plain = _plain_text_from_cq(fallback_text)
+        if plain:
+            # qbot 侧卡片最终失败时用这段纯文本补发，避免整条推送被吞
+            part["fallback_text"] = plain[:OFFICIAL_TEXT_MAX_LENGTH]
         return await self._post_official_parts(alias, [part])
 
     def _build_targets(self) -> List[Tuple[str, str]]:
@@ -399,7 +411,7 @@ class QQMessageSender:
         return results
 
     async def send_card(self, card: Dict[str, Any], napcat_text: str = "") -> List[bool]:
-        """新动态/直播卡片：官方走卡片；NapCat 和官方失败回退旧文本。"""
+        """新动态/直播卡片：官方走卡片；无配图或卡片失败时回退旧文本。"""
         if not QQ_PUSH_ENABLED:
             logger.info("QQ推送已禁用，跳过发送")
             return []
@@ -410,8 +422,7 @@ class QQMessageSender:
             return await self.send_to_all_groups(napcat_text)
 
         card = dict(card or {})
-        if not str(card.get("pic_url") or "").strip() and QQ_CARD_FALLBACK_IMAGE:
-            card["pic_url"] = QQ_CARD_FALLBACK_IMAGE
+        has_pic = bool(str(card.get("pic_url") or "").strip())
 
         targets = self._build_targets()
         if not targets:
@@ -421,7 +432,18 @@ class QQMessageSender:
         results: List[bool] = []
         for channel, value in targets:
             if channel == "official":
-                result = await self._send_official_card(value, card)
+                if not has_pic:
+                    # msg_type=8 必须有配图，纯文本动态发卡片必然失败；
+                    # 直接走文本+截图，不再依赖可能失效的远程兜底图。
+                    logger.info("卡片无配图，官方通道改发文本: alias=%s", value)
+                    if napcat_text:
+                        fallback = await self._send_official(value, napcat_text)
+                        results.append(bool(fallback) if fallback is not None else True)
+                    else:
+                        logger.warning("卡片无配图且没有兜底文本，跳过: alias=%s", value)
+                        results.append(False)
+                    continue
+                result = await self._send_official_card(value, card, napcat_text)
                 if result is False and napcat_text:
                     logger.warning("官方卡片发送失败，补发旧文本: alias=%s", value)
                     fallback = await self._send_official(value, napcat_text)

@@ -99,6 +99,7 @@ class Monitor:
         self.context = None
         self.page = None  # v4.8：持久化页面复用
         self._timeout_streak = 0  # v5.3：连续超时计数，连续2次则重建浏览器兜底
+        self._pending_pinned_events = []  # 后台置顶复核事件，由主循环串行处理
 
     def update_pinned_dynamic_id(self, new_id: str):
         """运行时动态更换置顶动态ID（供QQ回调指令调用），同时切换为手动模式"""
@@ -659,6 +660,138 @@ class Monitor:
         try: Path(self.history_file).write_text(json.dumps(self.history_data, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception as e: logger.error(f"❌ 保存历史失败: {e}")
 
+    def _enqueue_pinned_event(self, event: dict):
+        """后台复核事件入队；主循环串行处理，避免和浏览器操作并发。"""
+        if not event:
+            return
+        self._pending_pinned_events.append(event)
+        logger.info(f"📥 置顶事件入队: {event.get('event')}")
+
+    async def _drain_pinned_events(self):
+        """每轮开头处理后台复核产生的事件。"""
+        while self._pending_pinned_events:
+            event = self._pending_pinned_events.pop(0)
+            try:
+                await self._handle_pinned_event(event)
+            except Exception as e:
+                logger.error(f"❌ 处理置顶事件失败: {e}")
+
+    @staticmethod
+    def _path_to_img_tag(shot_path: Optional[str]) -> str:
+        """把截图文件转成邮件内嵌 base64 图片标签。"""
+        if not shot_path:
+            return ""
+        try:
+            import base64
+            img_bytes = Path(shot_path).read_bytes()
+            b64 = base64.b64encode(img_bytes).decode("ascii")
+            return f'<img src="data:image/png;base64,{b64}" style="max-width:700px;width:100%;"/>'
+        except Exception:
+            return "<p>(截图加载失败)</p>"
+
+    @staticmethod
+    def _build_pinned_email_html(title: str, rows, img_tag: str = "") -> str:
+        """生成与现有置顶邮件同款样式的 HTML。"""
+        primary, secondary = ColorConfig().get_random_gradient()
+        rows_html = "".join(
+            f'<div class="info-row"><strong>{label}:</strong> {value}</div>'
+            for label, value in rows
+        )
+        shot_html = f'<div class="screenshot">{img_tag}</div>' if img_tag else ""
+        return f"""<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8">
+<style>
+body {{ font-family:'Microsoft YaHei',Arial,sans-serif; margin:0; padding:20px; background-color:#f5f5f5; }}
+.container {{ max-width:600px; margin:0 auto; background-color:white; border-radius:10px; box-shadow:0 2px 10px rgba(0,0,0,0.1); overflow:hidden; }}
+.header {{ background:linear-gradient(135deg,{primary},{secondary}); color:white; padding:20px; text-align:center; }}
+.header h1 {{ margin:0; font-size:22px; }}
+.content {{ padding:24px; }}
+.info-row {{ background:#f9f9f9; padding:10px 14px; border-radius:6px; margin-bottom:8px; border-left:4px solid {primary}; }}
+.info-row strong {{ color:{primary}; }}
+.screenshot {{ text-align:center; margin-top:16px; }}
+.screenshot img {{ max-width:100%; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.1); }}
+.footer {{ text-align:center; padding:16px; color:#999; font-size:12px; }}
+</style></head>
+<body>
+<div class="container">
+<div class="header"><h1>【{UP_NAME}】{title}</h1></div>
+<div class="content">
+{rows_html}
+{shot_html}
+</div>
+<div class="footer">此邮件由 BTCE 自动发送</div>
+</div>
+</body></html>"""
+
+    async def _handle_pinned_event(self, event: dict):
+        """统一处理置顶发现/更换/取消/恢复，并发送管理邮箱。"""
+        kind = str(event.get("event") or "")
+        current_id = str(event.get("current_id") or "")
+        previous_id = str(event.get("previous_id") or "")
+        ct = str(event.get("time") or time.strftime("%Y-%m-%d %H:%M:%S"))
+        if not current_id or kind not in ("first_seen", "changed", "cancelled", "recovered"):
+            return
+
+        url = f"https://t.bilibili.com/{current_id}"
+        img_tag = ""
+
+        if kind in ("first_seen", "changed"):
+            # 切换监控目标，后续置顶评论检测立即用新 ID
+            self.pinned_dynamic_id = current_id
+            self.history_data["last_pinned_dynamic_id"] = None
+            _update_config_pinned_id(current_id)
+            shot_path = await self._take_dynamic_screenshot(current_id)
+            img_tag = self._path_to_img_tag(shot_path)
+            if kind == "changed":
+                title = "置顶动态已更换"
+                rows = [
+                    ("变更时间", ct),
+                    ("新置顶动态ID", current_id),
+                    ("旧置顶动态ID", previous_id or "无"),
+                    ("链接", f'<a href="{url}">{url}</a>'),
+                ]
+                logger.info(f"📌 置顶已更换: {previous_id or '(无)'} -> {current_id}")
+            else:
+                title = "置顶动态已发现"
+                rows = [
+                    ("发现时间", ct),
+                    ("置顶动态ID", current_id),
+                    ("链接", f'<a href="{url}">{url}</a>'),
+                ]
+                logger.info(f"📌 首次发现置顶动态: {current_id}")
+        elif kind == "recovered":
+            title = "置顶动态已恢复"
+            rows = [
+                ("恢复时间", ct),
+                ("置顶动态ID", current_id),
+                ("链接", f'<a href="{url}">{url}</a>'),
+            ]
+            if current_id != self.pinned_dynamic_id:
+                self.pinned_dynamic_id = current_id
+                _update_config_pinned_id(current_id)
+            self.history_data["last_pinned_dynamic_id"] = None
+            logger.info(f"📌 置顶已恢复: {current_id}")
+        else:  # cancelled
+            title = "置顶动态已取消"
+            rows = [
+                ("取消时间", ct),
+                ("原置顶动态ID", current_id),
+                ("链接", f'<a href="{url}">{url}</a>'),
+                ("说明", "系统将继续监控该动态，直到检测到新的置顶动态"),
+            ]
+            # 按要求：取消置顶后不切换监控目标，继续监控原动态
+            logger.info(f"📌 置顶已取消: {current_id}（继续监控原动态）")
+
+        html = self._build_pinned_email_html(title, rows, img_tag)
+        asyncio.create_task(asyncio.to_thread(
+            send_email,
+            subject=f"【{UP_NAME}】{title}",
+            content=html,
+            to_emails=STATUS_MONITOR_EMAILS,
+        ))
+        logger.info(f"📧 置顶事件邮件已提交: {title}")
+
     # ------------------------------------------------------------------
     # 主循环
     # ------------------------------------------------------------------
@@ -672,13 +805,15 @@ class Monitor:
         success = False
 
         try:
+            await self._drain_pinned_events()
             for uid, name in [(UP_UID, UP_NAME)]:
 
                 # 1) 优先检测置顶评论（核心功能）
                 pinned_id = self.pinned_dynamic_id
-                is_new = (self.history_data.get("last_pinned_dynamic_id") and pinned_id != self.history_data.get("last_pinned_dynamic_id"))
-                if await self.check_dynamic_changes(pinned_id, is_new_pinned=is_new):
-                    success = True
+                if pinned_id:
+                    is_new = (self.history_data.get("last_pinned_dynamic_id") and pinned_id != self.history_data.get("last_pinned_dynamic_id"))
+                    if await self.check_dynamic_changes(pinned_id, is_new_pinned=is_new):
+                        success = True
 
                 # 2) API 拿动态列表 → 检测新动态
                 api_list, api_ok = await self.get_api_dynamics(uid)
@@ -724,7 +859,7 @@ class Monitor:
                 # 3) 定期检测置顶动态是否更换（默认1h一次）
                 now = time.time()
                 if now - self.last_pinned_check >= PINNED_CHECK_INTERVAL:
-                    pr = await check_pinned_dynamic(uid)
+                    pr = await check_pinned_dynamic(uid, event_sink=self._enqueue_pinned_event)
                     self.api_pinned_id = pr.get("api_id") or pr.get("current_id") or self.api_pinned_id
                     if pr.get("auto_restored"):
                         # 手动模式下，API检测到B站置顶与手动设定一致 → 自动切回自动模式
@@ -765,67 +900,11 @@ body {{ font-family:'Microsoft YaHei',Arial,sans-serif; margin:0; padding:20px; 
                             to_emails=STATUS_MONITOR_EMAILS,
                         ))
                         logger.info(f"📧 自动恢复邮件已提交")
-                    if pr["changed"] and pr["current_id"]:
-                        # 先更新监控目标，让后续检测立即用新置顶
-                        self.pinned_dynamic_id = pr["current_id"]
-                        self.history_data["last_pinned_dynamic_id"] = None
-                        # 同步写入 config.py，持久化到文件（重启不丢失）
-                        _update_config_pinned_id(pr["current_id"])
-                        logger.info(f"📌 置顶已更换: {pr['previous_id']} -> {pr['current_id']}")
-
-                        # 截图新置顶动态，内嵌base64到邮件
-                        shot_path = await self._take_dynamic_screenshot(pr["current_id"])
-                        img_tag = ""
-                        if shot_path:
-                            import base64
-                            try:
-                                img_bytes = Path(shot_path).read_bytes()
-                                b64 = base64.b64encode(img_bytes).decode("ascii")
-                                img_tag = f'<img src="data:image/png;base64,{b64}" style="max-width:700px;width:100%;"/>'
-                            except Exception:
-                                img_tag = '<p>(截图加载失败)</p>'
-
-                        # 生成渐变配色（与置顶评论邮件同款 ColorConfig）
-                        cc = ColorConfig()
-                        primary, secondary = cc.get_random_gradient()
-                        ct = time.strftime("%Y-%m-%d %H:%M:%S")
-                        url = f"https://t.bilibili.com/{pr['current_id']}"
-                        html = f"""<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8">
-<style>
-body {{ font-family:'Microsoft YaHei',Arial,sans-serif; margin:0; padding:20px; background-color:#f5f5f5; }}
-.container {{ max-width:600px; margin:0 auto; background-color:white; border-radius:10px; box-shadow:0 2px 10px rgba(0,0,0,0.1); overflow:hidden; }}
-.header {{ background:linear-gradient(135deg,{primary},{secondary}); color:white; padding:20px; text-align:center; }}
-.header h1 {{ margin:0; font-size:22px; }}
-.content {{ padding:24px; }}
-.info-row {{ background:#f9f9f9; padding:10px 14px; border-radius:6px; margin-bottom:8px; border-left:4px solid {primary}; }}
-.info-row strong {{ color:{primary}; }}
-.screenshot {{ text-align:center; margin-top:16px; }}
-.screenshot img {{ max-width:100%; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.1); }}
-.footer {{ text-align:center; padding:16px; color:#999; font-size:12px; }}
-</style></head>
-<body>
-<div class="container">
-<div class="header"><h1>【{name}】置顶动态已更换</h1></div>
-<div class="content">
-<div class="info-row"><strong>变更时间:</strong> {ct}</div>
-<div class="info-row"><strong>新置顶动态ID:</strong> {pr['current_id']}</div>
-<div class="info-row"><strong>旧置顶动态ID:</strong> {pr['previous_id']}</div>
-<div class="info-row"><strong>链接:</strong> <a href="{url}">{url}</a></div>
-<div class="screenshot">{img_tag if img_tag else '<p>(截图生成中…)</p>'}</div>
-</div>
-<div class="footer">此邮件由 BTCE 自动发送</div>
-</div>
-</body></html>"""
-                        asyncio.create_task(asyncio.to_thread(
-                            send_email,
-                            subject=f"【{name}】置顶动态已更换",
-                            content=html,
-                            to_emails=STATUS_MONITOR_EMAILS,
-                        ))
-                        logger.info(f"📧 置顶更换邮件已提交")
-                    elif pr["current_id"]:
+                    if pr.get("changed") and pr.get("current_id"):
+                        await self._handle_pinned_event(pr)
+                    elif pr.get("pending_confirm"):
+                        logger.info("📌 置顶检测: 等待后台复核")
+                    elif pr.get("current_id"):
                         logger.info(f"📌 置顶检测完成: {pr['current_id']} (无变化)")
                     self.last_pinned_check = now
 

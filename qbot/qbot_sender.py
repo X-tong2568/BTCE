@@ -534,6 +534,9 @@ class OfficialSender:
                 last_error = exc
                 item.attempts += 1
                 if not exc.retryable or attempt >= config.RETRY_MAX_ATTEMPTS:
+                    fallback = await self._card_fallback(item, part, exc)
+                    if fallback is not None:
+                        return fallback
                     raise
                 delay = self._retry_delay(exc.code, attempt)
                 logger.warning(
@@ -565,6 +568,51 @@ class OfficialSender:
         if last_error:
             raise last_error
         raise QBotAPIError(None, "发送失败", False)
+
+    async def _card_fallback(
+        self,
+        item: QueueItem,
+        part: SendPart,
+        card_error: QBotAPIError,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        作用：卡片最终失败时补发纯文本，避免整条推送被吞。
+        入参：队列项、失败的 part、卡片原始错误。
+        出参：补发成功返回结果字典；非卡片/无兜底文案/补发失败返回 None。
+        """
+        text = (part.fallback_text or "").strip()
+        if part.type != "card" or not text or self.mock:
+            return None
+
+        logger.warning(
+            "卡片发送失败，改发兜底文本: request_id=%s group=%s card_code=%s",
+            item.request_id,
+            item.group_alias,
+            card_error.code,
+        )
+        try:
+            result = await self._post_group_message(
+                item.group_openid,
+                msg_type=0,
+                content=text,
+            )
+        except QBotAPIError as exc:
+            logger.error(
+                "兜底文本发送失败: request_id=%s group=%s code=%s msg=%s",
+                item.request_id,
+                item.group_alias,
+                exc.code,
+                exc.message,
+            )
+            return None
+
+        self.state.incr_daily(item.group_openid)
+        return {
+            "type": "text",
+            "status": "fallback",
+            "attempts": item.attempts,
+            "result": result,
+        }
 
     def _retry_delay(self, code: Optional[int], attempt: int) -> float:
         """作用：计算重试延迟；频控错误至少等 60 秒。"""

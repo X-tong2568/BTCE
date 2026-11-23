@@ -14,6 +14,11 @@ from logger_config import logger
 
 STATE_FILE = Path(__file__).parent / "pinned_dynamic_state.json"
 
+# 置顶消失后的复核节奏：每 60 秒一次，最多 3 次；3 次成功为空才确认取消。
+CONFIRM_RECHECK_SECONDS = 60
+CONFIRM_RECHECK_ATTEMPTS = 3
+_confirm_task: Optional[asyncio.Task] = None
+
 # 归档仓里的置顶游标：EchoWatch 据此判断“哪条评论是当前置顶”
 CURSOR_PATH = "_state/pinned_cursor.json"
 _cursor_cache: Optional[dict] = None
@@ -164,32 +169,193 @@ def _find_pinned(raw_items: list[dict]) -> Optional[dict]:
     return None
 
 
-async def check_pinned_dynamic(uid: str = None) -> dict:
+def _now() -> str:
+    """统一事件时间格式。"""
+    return time.strftime("%Y-%m-%d %H:%M:%S")
+
+
+async def _fetch_items(uid: str):
+    """拉一次动态列表，供检查与后台复核共用。"""
+    from bili_api import BiliAPI
+
+    bili = BiliAPI(COOKIE_FILE)
+    try:
+        items, ok = await bili._fetch_raw(uid)
+    finally:
+        await bili.close()
+    return items, ok
+
+
+def _pinned_info(pinned: Optional[dict]) -> dict:
+    """提取写进 state 的置顶摘要。"""
+    if not pinned:
+        return {}
+    modules = pinned.get("modules") or {}
+    desc = (modules.get("module_dynamic") or {}).get("desc")
+    return {
+        "dynamic_id": pinned.get("id_str", ""),
+        "type": pinned.get("type", ""),
+        "pub_time": (modules.get("module_author") or {}).get("pub_time", ""),
+        "text": (desc.get("text", "") if desc else "")[:100],
+    }
+
+
+async def _apply_change(
+    monitored_id: str,
+    api_id: str,
+    pinned: dict,
+    reason: str,
+) -> dict:
+    """写入新的监控目标并返回事件；取消状态也随之解除。"""
+    now = _now()
+    state = _load_state()
+    state["pinned_dynamic_id"] = api_id
+    state["pin_status"] = "ok"
+    state["pin_cancelled_at"] = ""
+    state["last_change"] = now
+    state["last_pinned_info"] = _pinned_info(pinned)
+    _save_state(state)
+    # 只写动态 ID，rpid 等 monitor.check_dynamic_changes 抓到后再补
+    await asyncio.to_thread(write_pinned_cursor, api_id, None, reason)
+    logger.info("置顶监测: 监控目标 %s -> %s (%s)", monitored_id or "-", api_id, reason)
+    return {
+        "event": "changed" if monitored_id else "first_seen",
+        "current_id": api_id,
+        "previous_id": monitored_id or None,
+        "time": now,
+        "reason": reason,
+    }
+
+
+def _monitor_target_unchanged(monitored_id: str) -> bool:
+    """复核期间确认没人手动改过监控目标或切到手动模式。"""
+    state = _load_state()
+    if state.get("mode") == "manual":
+        return False
+    return str(state.get("pinned_dynamic_id") or "") == str(monitored_id)
+
+
+def _schedule_confirmation(uid: str, monitored_id: str, event_sink) -> bool:
+    """启动后台复核任务；已有任务在跑时不重复发起。"""
+    global _confirm_task
+    if _confirm_task is not None and not _confirm_task.done():
+        logger.info("置顶复核任务已在运行，跳过重复调度")
+        return True
+    try:
+        _confirm_task = asyncio.create_task(
+            _confirm_pin_missing(uid, monitored_id, event_sink)
+        )
+    except RuntimeError as e:
+        logger.warning("置顶复核任务启动失败: %s", e)
+        return False
+    return True
+
+
+async def _confirm_pin_missing(uid: str, monitored_id: str, event_sink) -> None:
+    """
+    作用：API 首次没返回置顶后，每 60 秒复核一次，最多 3 次。
+    说明：复核期间原 ID 回来视为 API 抖动，静默；3 次成功为空才确认取消。
+          取消后仍保留 monitored_id，BTCE 继续监控原动态。
+    """
+    global _confirm_task
+    empty_count = 0
+    fail_count = 0
+    try:
+        for _ in range(CONFIRM_RECHECK_ATTEMPTS):
+            await asyncio.sleep(CONFIRM_RECHECK_SECONDS)
+            if not _monitor_target_unchanged(monitored_id):
+                logger.info("置顶复核: 监控目标已变化，放弃本轮复核")
+                return
+            items, ok = await _fetch_items(uid)
+            if not ok:
+                fail_count += 1
+                continue
+            pinned = _find_pinned(items)
+            api_id = pinned.get("id_str") if pinned else None
+            if api_id is None:
+                empty_count += 1
+                continue
+            if str(api_id) == str(monitored_id):
+                logger.info("置顶复核: API 抖动，原置顶仍在 (%s)，本轮静默", api_id)
+                return
+            # 复核期间直接换成了另一条动态
+            event = await _apply_change(monitored_id, api_id, pinned, "recheck_change")
+            if event_sink:
+                event_sink(event)
+            return
+
+        if empty_count < CONFIRM_RECHECK_ATTEMPTS:
+            logger.warning(
+                "置顶复核: 成功为空 %s 次、请求失败 %s 次，未达到 %s 次空结果，不判取消",
+                empty_count,
+                fail_count,
+                CONFIRM_RECHECK_ATTEMPTS,
+            )
+            return
+        if not _monitor_target_unchanged(monitored_id):
+            logger.info("置顶复核: 监控目标已变化，放弃确认取消")
+            return
+
+        state = _load_state()
+        cancelled_at = _now()
+        state["pin_status"] = "cancelled"
+        state["pin_cancelled_at"] = cancelled_at
+        state["last_change"] = cancelled_at
+        _save_state(state)
+        logger.info(
+            "置顶复核: 连续 %s 次为空，确认取消置顶；继续监控原动态 %s",
+            empty_count,
+            monitored_id,
+        )
+        if event_sink:
+            event_sink(
+                {
+                    "event": "cancelled",
+                    "current_id": monitored_id,
+                    "previous_id": monitored_id,
+                    "time": cancelled_at,
+                    "reason": "pinned_cancelled",
+                }
+            )
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.warning("置顶复核异常，保持原状: %s", e)
+    finally:
+        _confirm_task = None
+
+
+async def check_pinned_dynamic(uid: str = None, event_sink=None) -> dict:
     """
     通过 API 发现当前置顶动态，检测是否更换。
-    只检测和记录状态，不发送邮件。
+    只检测和记录状态，不发送邮件；后台复核事件通过 event_sink 回传。
 
     Args:
         uid: B站 UID，默认用 config.UP_UID
+        event_sink: 可选同步回调，接收后台复核产生的 cancelled / changed 事件
     Returns:
-        {"changed": bool, "current_id": str|None, "previous_id": str|None,
-         "is_new": bool, "api_id": str|None, "auto_restored": bool}
+        {"changed": bool, "event": str|None, "current_id": str|None,
+         "previous_id": str|None, "is_new": bool, "api_id": str|None,
+         "auto_restored": bool, "pending_confirm": bool}
     """
-    from bili_api import BiliAPI
-
     uid = uid or UP_UID
-    cookie_file = COOKIE_FILE
 
-    result = {"changed": False, "current_id": None, "previous_id": None, "is_new": False, "api_id": None, "auto_restored": False}
+    result = {
+        "changed": False,
+        "event": None,
+        "current_id": None,
+        "previous_id": None,
+        "is_new": False,
+        "api_id": None,
+        "auto_restored": False,
+        "pending_confirm": False,
+    }
 
-    if not cookie_file.exists():
+    if not COOKIE_FILE.exists():
         logger.warning("置顶监测: Cookie 文件不存在，跳过")
         return result
 
-    bili = BiliAPI(cookie_file)
-    raw_items, ok = await bili._fetch_raw(uid)
-    await bili.close()
-
+    raw_items, ok = await _fetch_items(uid)
     if not ok:
         logger.warning("置顶监测: API 请求失败，跳过本轮")
         return result
@@ -197,11 +363,12 @@ async def check_pinned_dynamic(uid: str = None) -> dict:
     pinned = _find_pinned(raw_items)
     api_pinned_id = pinned.get("id_str") if pinned else None
     state = _load_state()
-    monitored_id = state.get("pinned_dynamic_id")  # 系统正在监控的ID
+    monitored_id = str(state.get("pinned_dynamic_id") or "")  # 系统正在监控的ID
+    pin_status = str(state.get("pin_status") or "ok")
 
     result["api_id"] = api_pinned_id
     result["current_id"] = monitored_id or api_pinned_id
-    result["previous_id"] = monitored_id
+    result["previous_id"] = monitored_id or None
 
     # 手动模式：API照查，但不自动切换（除非检测到手动设定已与B站一致）
     if state.get("mode") == "manual":
@@ -217,41 +384,62 @@ async def check_pinned_dynamic(uid: str = None) -> dict:
         return result
 
     # 自动模式 -------------------------------------------------
+    # API 没返回置顶：不立即改状态，先后台复核三次
     if api_pinned_id is None:
-        if monitored_id:
-            logger.info(f"置顶监测: 置顶动态已消失 (上次: {monitored_id})")
-            state["pinned_dynamic_id"] = None
-            state["last_change"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        if not monitored_id:
+            return result
+        if pin_status == "cancelled":
+            logger.info("置顶监测: 仍处于取消置顶状态，继续监控原动态 %s", monitored_id)
+            return result
+        result["pending_confirm"] = _schedule_confirmation(uid, monitored_id, event_sink)
+        if result["pending_confirm"]:
+            logger.info(
+                "置顶监测: API 未返回置顶，%s 秒后开始复核（最多 %s 次）",
+                CONFIRM_RECHECK_SECONDS,
+                CONFIRM_RECHECK_ATTEMPTS,
+            )
+        return result
+
+    # 之前处于取消状态：判断是恢复还是换成了另一条
+    if pin_status == "cancelled":
+        if str(api_pinned_id) == monitored_id:
+            now = _now()
+            state["pin_status"] = "ok"
+            state["pin_cancelled_at"] = ""
+            state["last_change"] = now
+            state["last_pinned_info"] = _pinned_info(pinned)
             _save_state(state)
-            await asyncio.to_thread(write_pinned_cursor, None, None, "pinned_disappeared")
+            logger.info("置顶监测: 置顶已恢复 -> %s", api_pinned_id)
             result["changed"] = True
+            result["event"] = "recovered"
+            result["current_id"] = api_pinned_id
+            return result
+        await _apply_change(monitored_id, api_pinned_id, pinned, "recovered_as_change")
+        result["changed"] = True
+        result["event"] = "changed"
+        result["current_id"] = api_pinned_id
+        return result
+
+    # 首次发现
+    if not monitored_id:
+        await _apply_change(monitored_id, api_pinned_id, pinned, "first_seen")
+        result["changed"] = True
+        result["event"] = "first_seen"
+        result["is_new"] = True
+        result["current_id"] = api_pinned_id
         return result
 
     # 无变化
-    if api_pinned_id == monitored_id:
+    if str(api_pinned_id) == monitored_id:
+        if pin_status != "ok":
+            state["pin_status"] = "ok"
+            _save_state(state)
         return result
 
-    # 有变化（首次发现 或 自动更换）
-    is_new = (monitored_id is None)
-    logger.info(f"置顶监测: {'首次发现' if is_new else '已更换'} 置顶动态 -> {api_pinned_id}")
-
-    # 更新状态文件
-    state["pinned_dynamic_id"] = api_pinned_id
-    state["last_change"] = time.strftime("%Y-%m-%d %H:%M:%S")
-    mod_dyn = (pinned.get("modules", {}).get("module_dynamic") or {})
-    desc = mod_dyn.get("desc")
-    state["last_pinned_info"] = {
-        "dynamic_id": api_pinned_id,
-        "type": pinned.get("type", ""),
-        "pub_time": (pinned.get("modules", {}).get("module_author", {}).get("pub_time", "")),
-        "text": (desc.get("text", "") if desc else "")[:100],
-    }
-    _save_state(state)
-    # 只写动态 ID，rpid 等 monitor.check_dynamic_changes 抓到后再补
-    await asyncio.to_thread(write_pinned_cursor, api_pinned_id, None, "auto_change")
-
+    # 自动更换
+    await _apply_change(monitored_id, api_pinned_id, pinned, "auto_change")
     result["changed"] = True
-    result["is_new"] = is_new
+    result["event"] = "changed"
     result["current_id"] = api_pinned_id
     return result
 
